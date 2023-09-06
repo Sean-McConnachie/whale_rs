@@ -1,0 +1,71 @@
+[executable.normal]
+modifiers = []
+foreground = "Green"
+
+[executable.highlighted]
+modifiers = []
+foreground = "Green"
+background = "White"
+
+[path.normal]
+modifiers = []
+foreground = "Blue"
+
+[path.highlighted]
+modifiers = []
+foreground = "Blue"
+background = "Red"
+
+[flag.normal]
+modifiers = []
+foreground = "Magenta"
+
+[flag.highlighted]
+modifiers = []
+foreground = "Magenta"
+background = "Cyan"
+
+[arg.normal]
+modifiers = []
+foreground = "Yellow"
+
+[arg.highlighted]
+modifiers = []
+foreground = "Yellow"
+background = "Blue"
+
+[text.normal]
+modifiers = []
+foreground = "White"
+
+[text.highlighted]
+modifiers = []
+foreground = "White"
+background = "Black"
+
+[console_main.normal]
+modifiers = ["Bold"]
+foreground = "Yellow"
+
+[console_main.highlighted]
+modifiers = ["Bold"]
+foreground = "Yellow"
+background = "Red"
+
+[console_secondary.normal]
+modifiers = ["Italic"]
+foreground = "Cyan"
+
+[console_secondary.highlighted]
+modifiers = ["Italic"]
+foreground = "Cyan"
+background = "White"
+
+[error.normal]
+modifiers = ["Bold"]
+foreground = "Red"
+
+[error.highlighted]
+modifiers = ["Bold"]
+foreground = "Red"
+background = "Yellow"
