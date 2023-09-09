@@ -5,9 +5,8 @@ edition = "2021"
 authors = ["Sean McConnachie<seanjulian.mcc@gmail.com>"]
 
 [dependencies]
-crossterm = "0.26.1" 
+crossterm = "0.27.0"
 ctrlc = "3.3.1"
-enum_dispatch = "0.3.11"
 toml = "0.7.4"
 serde = { version = "1.0.0", features = ["derive"] }
 anyhow = "1.0.0"

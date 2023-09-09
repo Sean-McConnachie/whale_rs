@@ -37,7 +37,7 @@ pub enum InputEvent {
     Other(Event),
 }
 
-pub fn get_input() -> Result<InputEvent, crossterm::ErrorKind> {
+pub fn get_input() -> Result<InputEvent, std::io::Error> {
     let key = crossterm::event::read()?;
 
     Ok(match key {

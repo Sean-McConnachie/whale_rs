@@ -86,7 +86,7 @@ pub fn cursor_restore() {
     print!("{}[u", ESCAPE_CODE);
 }
 
-pub fn cursor_pos() -> crossterm::Result<(u16, u16)> {
+pub fn cursor_pos() -> Result<(u16, u16), std::io::Error> {
     print!("{}[6n", ESCAPE_CODE);
     flush();
 

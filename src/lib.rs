@@ -4,3 +4,5 @@ pub mod config;
 pub mod enums;
 pub mod utils;
 pub mod buffer;
+pub mod gui;
+pub mod state;
