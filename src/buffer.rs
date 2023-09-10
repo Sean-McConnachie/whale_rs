@@ -1,3 +1,6 @@
+use crate::{config::command, enums, hints, state};
+use std::path;
+
 const BUFFER_LENGTH: usize = 8192;
 
 pub type BufferPosition = usize;
@@ -23,15 +26,12 @@ pub struct Cursor {
 
 impl Cursor {
     pub fn new(position: usize, active: bool) -> Self {
-        Self {
-            position,
-            active,
-        }
+        Self { position, active }
     }
 }
 
 #[derive(Debug)]
-pub struct InputBuffer {
+pub struct InputBuffer<'a> {
     buffer: [char; BUFFER_LENGTH],
     input_length: usize,
 
@@ -40,14 +40,17 @@ pub struct InputBuffer {
 
     /// 1D array of start and stop of arguments.
     /// For all args, argstart = index * 2, argstop = index * 2 + 1
-    /// If argstop % 2 == 1 && index is last, and argstop is end of buffer.
     split_locs: Vec<BufferPosition>,
 
     quote_locs: Vec<BufferPosition>,
+
+    program_state: &'a state::ProgramState,
+    current_command: Option<&'a command::ConfigCommand>,
+    argument_hints: Vec<(enums::ArgType, hints::Hint<'a>)>,
 }
 
-impl InputBuffer {
-    pub fn init() -> Self {
+impl<'a> InputBuffer<'a> {
+    pub fn init(program_state: &'a state::ProgramState) -> Self {
         Self {
             buffer: ['\0'; BUFFER_LENGTH],
             input_length: 0,
@@ -55,6 +58,9 @@ impl InputBuffer {
             secondary_cursor: Cursor::new(0, false),
             split_locs: Vec::new(),
             quote_locs: Vec::new(),
+            argument_hints: Vec::new(),
+            current_command: None,
+            program_state,
         }
     }
 
@@ -66,8 +72,20 @@ impl InputBuffer {
         &mut self.buffer[..self.input_length]
     }
 
+    pub fn get_buffer_str(&self, (start, stop): (BufferPosition, BufferPosition)) -> String {
+        self.buffer[start..stop].iter().collect()
+    }
+
+    pub fn get_buffer_range(&self, start: BufferPosition, stop: BufferPosition) -> &[char] {
+        &self.buffer[start..stop]
+    }
+
     pub fn get_quotes(&self) -> &[BufferPosition] {
         &self.quote_locs
+    }
+
+    pub fn get_argument_hints(&self) -> &[(enums::ArgType, hints::Hint)] {
+        &self.argument_hints
     }
 
     pub fn get_splits(&self) -> &[BufferPosition] {
@@ -78,25 +96,179 @@ impl InputBuffer {
         self.input_length
     }
 
+    pub fn arg_locs_iterator(&self) -> impl Iterator<Item = (BufferPosition, BufferPosition)> + '_ {
+        (0..self.num_args())
+            .into_iter()
+            .map(|k| (self.split_locs[k * 2], self.split_locs[k * 2 + 1]))
+    }
+
     pub fn arg_locs(&self, arg_i: usize) -> (BufferPosition, BufferPosition) {
         let start = self.split_locs[arg_i * 2];
-        let stop_i = arg_i * 2 + 1;
-        if stop_i == self.split_locs.len() {
-            (start, self.input_length)
-        } else {
-            (start, self.split_locs[stop_i])
-        }
+        let stop = self.split_locs[arg_i * 2 + 1];
+        (start, stop)
     }
 
     pub fn num_args(&self) -> usize {
-        if self.split_locs.len() % 2 == 0 {
-            self.split_locs.len() / 2
+        self.split_locs.len() / 2
+    }
+
+    fn out_of_range_or_different(&self, i: usize, target: enums::ArgType) -> bool {
+        if i >= self.argument_hints.len() {
+            true
         } else {
-            self.split_locs.len() / 2 + 1
+            self.argument_hints[i].0 == target
         }
     }
 
-    pub fn update_locs(&mut self) {
+    fn push_or_replace(&mut self, i: usize, val: (enums::ArgType, hints::Hint<'_>)) {
+        if i < self.argument_hints.len() {
+            self.argument_hints[i] = val;
+        } else {
+            self.argument_hints.push(val);
+        }
+    }
+
+    fn arg_to_path(s: &str) -> path::PathBuf {
+        todo!()
+    }
+
+    fn update_arguments(&mut self) {
+        if self.out_of_range_or_different(0, enums::ArgType::Executable) {
+            let hint = hints::executables::make_executables_hint();
+            self.push_or_replace(0, (enums::ArgType::Executable, hint));
+        }
+
+        let first_arg = {
+            let (start, stop) = match self.arg_locs_iterator().nth(0) {
+                Some(v) => v,
+                None => {
+                    self.current_command = None;
+                    (0, 0)
+                }
+            };
+            self.buffer[start..stop].iter().collect::<String>()
+        };
+
+        if !first_arg.is_empty() {
+            if self.current_command.is_some() {
+                if first_arg != self.current_command.unwrap().exe_name {
+                    self.current_command = None;
+                }
+            }
+            if self.current_command.is_none() {
+                for cmd in &self.program_state.config.commands {
+                    if cmd.exe_name == first_arg {
+                        self.current_command = Some(&cmd);
+                    }
+                }
+            }
+        }
+
+        if self.current_command.is_none() {
+            for arg_i in 1..self.num_args() {
+                let arg = self.get_buffer_str(self.arg_locs(arg_i));
+                let path = Self::arg_to_path(&arg);
+                if self.out_of_range_or_different(arg_i, enums::ArgType::Path) {
+                    let hint = hints::filesystem::make_directory_hints(path, None);
+                    self.push_or_replace(arg_i, (enums::ArgType::Path, hint));
+                    continue;
+                }
+                hints::filesystem::update_directory_hints(&path, &mut self.argument_hints[arg_i].1);
+            }
+            return;
+        }
+
+        let cmd = &self.current_command.unwrap();
+
+        let mut flag_skips = Vec::with_capacity(cmd.flags.len());
+        let mut arg_skips = Vec::with_capacity(cmd.args.len());
+        let mut arg_flag_skips = Vec::with_capacity(cmd.arg_flags.len());
+
+        let mut skip = false;
+        let mut arg_c = 1;
+        'outer: for (i, arg) in self
+            .arg_locs_iterator()
+            .enumerate()
+            .map(|(i, range)| (i, self.get_buffer_str(range)))
+        {
+            if skip {
+                skip = false;
+                continue;
+            }
+            // TODO: Use binary searches instead
+            for (k, arg_flag) in cmd.arg_flags.iter().enumerate() {
+                if arg_skips.contains(&k) {
+                    continue;
+                }
+                if arg_flag.flag_name == arg {
+                    if self.out_of_range_or_different(i, enums::ArgType::Text) {
+                        let hint = hints::Hint::default();
+                        self.push_or_replace(i, (enums::ArgType::Text, hint));
+                    }
+                    if self.out_of_range_or_different(i + 1, arg_flag.arg_type) {
+                        let hint = match arg_flag.arg_type {
+                            enums::ArgType::Executable => {
+                                hints::executables::make_executables_hint()
+                            }
+                            enums::ArgType::Path => hints::filesystem::make_directory_hints(
+                                Self::arg_to_path(&arg),
+                                Some(&arg_flag.arg_hint),
+                            ),
+                            enums::ArgType::Text => hints::Hint::default(),
+                        };
+                        self.push_or_replace(i + 1, (arg_flag.arg_type, hint));
+                    } else if arg_flag.arg_type == enums::ArgType::Path {
+                        hints::filesystem::update_directory_hints(
+                            &Self::arg_to_path(&arg),
+                            &mut self.argument_hints[i + 1].1,
+                        );
+                    }
+                    skip = true;
+                    arg_flag_skips.push(k);
+                    continue 'outer;
+                }
+            }
+
+            for (k, flag) in cmd.flags.iter().enumerate() {
+                if flag_skips.contains(&k) {
+                    continue;
+                }
+                if flag.flag_name == arg {
+                    if self.out_of_range_or_different(i, enums::ArgType::Text) {
+                        self.push_or_replace(i, (enums::ArgType::Text, hints::Hint::default()));
+                    }
+                    flag_skips.push(k);
+                    continue 'outer;
+                }
+            }
+
+            for (k, single_arg) in cmd.args.iter().enumerate() {
+                if arg_skips.contains(&k) {
+                    continue;
+                }
+                if single_arg.arg_pos == arg_c {
+                    if self.out_of_range_or_different(i, single_arg.arg_type) {
+                        let hint = match single_arg.arg_type {
+                            enums::ArgType::Executable => {
+                                hints::executables::make_executables_hint()
+                            }
+                            enums::ArgType::Path => hints::filesystem::make_directory_hints(
+                                Self::arg_to_path(&arg),
+                                Some(&single_arg.arg_hint),
+                            ),
+                            enums::ArgType::Text => hints::Hint::default(),
+                        };
+                        self.push_or_replace(i, (single_arg.arg_type, hint));
+                    }
+                    arg_c += 1;
+                    arg_skips.push(k);
+                    continue 'outer;
+                }
+            }
+        }
+    }
+
+    pub fn update(&mut self) {
         self.split_locs.clear();
         self.quote_locs.clear();
 
@@ -114,6 +286,9 @@ impl InputBuffer {
         }
         if last_split < self.input_length {
             self.split_locs.push(last_split);
+        }
+        if self.split_locs.len() % 2 == 1 {
+            self.split_locs.push(self.input_length);
         }
     }
 
@@ -144,7 +319,7 @@ impl InputBuffer {
 
         match curr_dist < prev_dist {
             true => (pos_gt, Side::Right),
-            false => (pos_gt - 1, Side::Left)
+            false => (pos_gt - 1, Side::Left),
         }
     }
 
@@ -165,7 +340,7 @@ impl InputBuffer {
                 } else {
                     self.split_locs[arg_i + 1]
                 }
-            },
+            }
             _ => panic!("Side is neither"),
         }
     }
@@ -240,9 +415,13 @@ impl InputBuffer {
 
 #[cfg(test)]
 mod tests {
+    use crate::{config, state};
+
     #[test]
     fn test_buffer_insert_char() {
-        let mut buffer = super::InputBuffer::init();
+        let program_state =
+            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let mut buffer = super::InputBuffer::init(&program_state);
         assert_eq!(buffer.len(), 0);
 
         buffer.insert_char_main_cursor('a');
@@ -261,7 +440,9 @@ mod tests {
 
     #[test]
     fn test_buffer_insert_str() {
-        let mut buffer = super::InputBuffer::init();
+        let program_state =
+            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let mut buffer = super::InputBuffer::init(&program_state);
         assert_eq!(buffer.len(), 0);
 
         buffer.insert_str_main_cursor("abc");
@@ -278,7 +459,9 @@ mod tests {
 
     #[test]
     fn test_buffer_delete_between_cursors() {
-        let mut buffer = super::InputBuffer::init();
+        let program_state =
+            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let mut buffer = super::InputBuffer::init(&program_state);
         buffer.insert_str_main_cursor("abcdef");
         buffer.main_cursor.position = 0;
         buffer.secondary_cursor.position = 3;
@@ -292,9 +475,11 @@ mod tests {
 
     #[test]
     fn test_buffer_update() {
-        let mut buffer = super::InputBuffer::init();
+        let program_state =
+            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let mut buffer = super::InputBuffer::init(&program_state);
         buffer.insert_str_main_cursor("abc def ghi");
-        buffer.update_locs();
+        buffer.update();
 
         assert_eq!(buffer.quote_locs.len(), 0);
         assert_eq!(buffer.num_args(), 3);
@@ -303,7 +488,7 @@ mod tests {
         assert_eq!(buffer.arg_locs(2), (8, 11));
 
         buffer.insert_str_main_cursor(" \"jkl mno\" pqr");
-        buffer.update_locs();
+        buffer.update();
 
         assert_eq!(buffer.quote_locs.len(), 2);
         assert_eq!(buffer.num_args(), 5);
@@ -316,9 +501,11 @@ mod tests {
 
     #[test]
     fn test_buffer_closest_split() {
-        let mut buffer = super::InputBuffer::init();
+        let program_state =
+            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let mut buffer = super::InputBuffer::init(&program_state);
         buffer.insert_str_main_cursor("abc defg hi jklm");
-        buffer.update_locs();
+        buffer.update();
 
         assert_eq!(buffer.closest_split(0), (0, super::Side::Neither));
         assert_eq!(buffer.closest_split(1), (0, super::Side::Left));
@@ -344,9 +531,11 @@ mod tests {
 
     #[test]
     fn test_buffer_jump() {
-        let mut buffer = super::InputBuffer::init();
+        let program_state =
+            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let mut buffer = super::InputBuffer::init(&program_state);
         buffer.insert_str_main_cursor("abc defg hi jklm");
-        buffer.update_locs();
+        buffer.update();
 
         buffer.main_cursor.position = 0;
         assert_eq!(buffer.jump(super::Side::Left, &buffer.main_cursor), 0);
@@ -369,3 +558,4 @@ mod tests {
         assert_eq!(buffer.jump(super::Side::Right, &buffer.main_cursor), 16);
     }
 }
+

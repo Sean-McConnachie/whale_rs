@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Shell {
@@ -8,7 +8,7 @@ pub enum Shell {
 }
 
 /// This determines the hints that will be generated.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum ArgType {
     /// Provides suggestions based on current and surrounding directories.
     Path,

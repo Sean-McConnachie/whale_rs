@@ -1,9 +1,10 @@
 use std::path;
 use crate::config;
 
+#[derive(Debug)]
 pub struct ProgramState {
-    config: config::FullConfig,
-    current_working_directory: path::PathBuf,
+    pub config: config::FullConfig,
+    pub current_working_directory: path::PathBuf,
 }
 
 impl ProgramState {

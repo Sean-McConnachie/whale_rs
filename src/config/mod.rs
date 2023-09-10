@@ -16,6 +16,18 @@ pub struct FullConfig {
     pub commands: Vec<command::ConfigCommand>,
 }
 
+impl Default for FullConfig {
+    fn default() -> Self {
+        Self {
+            core: core::ConfigCore::default(),
+            history: history::ConfigHistory::default(),
+            theme: theme::ConfigTheme::default(),
+            gui: gui::ConfigGUI::default(),
+            commands: vec![]
+        }   
+    }
+}
+
 pub fn read_or_create_all_configs() -> FullConfig {
     let config_dir = std::path::PathBuf::from(std::env::var("CONFIG_DIR").unwrap_or("./config".to_string()));
 

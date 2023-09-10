@@ -1,8 +1,10 @@
 pub mod ansi;
-pub mod input;
+pub mod buffer;
 pub mod config;
 pub mod enums;
-pub mod utils;
-pub mod buffer;
 pub mod gui;
+pub mod hints;
+pub mod input;
 pub mod state;
+pub mod utils;
+
