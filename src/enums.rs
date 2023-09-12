@@ -8,7 +8,7 @@ pub enum Shell {
 }
 
 /// This determines the hints that will be generated.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum ArgType {
     /// Provides suggestions based on current and surrounding directories.
     Path,

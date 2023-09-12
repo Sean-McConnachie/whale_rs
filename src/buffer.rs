@@ -1,9 +1,16 @@
-use crate::{config::command, enums, hints, state};
+use crate::{config, config::command, enums, hints, state};
 use std::path;
 
 const BUFFER_LENGTH: usize = 8192;
 
 pub type BufferPosition = usize;
+
+#[derive(Debug, PartialEq)]
+enum Skip {
+    None,
+    Once,
+    Twice,
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Side {
@@ -96,7 +103,7 @@ impl<'a> InputBuffer<'a> {
         self.input_length
     }
 
-    pub fn arg_locs_iterator(&self) -> impl Iterator<Item = (BufferPosition, BufferPosition)> + '_ {
+    pub fn arg_locs_iterator(&self) -> impl Iterator<Item=(BufferPosition, BufferPosition)> + '_ {
         (0..self.num_args())
             .into_iter()
             .map(|k| (self.split_locs[k * 2], self.split_locs[k * 2 + 1]))
@@ -120,7 +127,7 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
-    fn push_or_replace(&mut self, i: usize, val: (enums::ArgType, hints::Hint<'_>)) {
+    fn push_or_replace(&mut self, i: usize, val: (enums::ArgType, hints::Hint<'a>)) {
         if i < self.argument_hints.len() {
             self.argument_hints[i] = val;
         } else {
@@ -132,6 +139,105 @@ impl<'a> InputBuffer<'a> {
         todo!()
     }
 
+    fn process_arg_flags(
+        &mut self,
+        i: usize,
+        arg: &str,
+        cmd: &'a command::ConfigCommand,
+        arg_flag_skips: &mut Vec<usize>,
+    ) -> Skip {
+        let mut skip = Skip::None;
+        for (k, arg_flag) in cmd.arg_flags.iter().enumerate() {
+            if arg_flag_skips.contains(&k) {
+                continue;
+            }
+            if arg_flag.flag_name == arg {
+                if self.out_of_range_or_different(i, enums::ArgType::Text) {
+                    let hint = hints::Hint::default();
+                    self.push_or_replace(i, (enums::ArgType::Text, hint));
+                }
+                if self.out_of_range_or_different(i + 1, arg_flag.arg_type.clone()) {
+                    let hint = match arg_flag.arg_type {
+                        enums::ArgType::Executable => {
+                            hints::executables::make_executables_hint()
+                        }
+                        enums::ArgType::Path => hints::filesystem::make_directory_hints(
+                            Self::arg_to_path(&arg),
+                            Some(&arg_flag.arg_hint),
+                        ),
+                        enums::ArgType::Text => hints::Hint::default(),
+                    };
+                    self.push_or_replace(i + 1, (arg_flag.arg_type.clone(), hint));
+                } else if arg_flag.arg_type == enums::ArgType::Path {
+                    hints::filesystem::update_directory_hints(
+                        &Self::arg_to_path(&arg),
+                        &mut self.argument_hints[i + 1].1,
+                    );
+                }
+                skip = Skip::Twice;
+                arg_flag_skips.push(k);
+                break;
+            }
+        }
+        skip
+    }
+
+    fn process_flags(
+        &mut self,
+        i: usize,
+        arg: &str,
+        cmd: &'a command::ConfigCommand,
+        flag_skips: &mut Vec<usize>,
+    ) -> Skip {
+        for (k, flag) in cmd.flags.iter().enumerate() {
+            if flag_skips.contains(&k) {
+                continue;
+            }
+            if flag.flag_name == arg {
+                if self.out_of_range_or_different(i, enums::ArgType::Text) {
+                    self.push_or_replace(i, (enums::ArgType::Text, hints::Hint::default()));
+                }
+                flag_skips.push(k);
+                return Skip::Once;
+            }
+        }
+        Skip::None
+    }
+
+    fn process_args(
+        &mut self,
+        i: usize,
+        arg: &str,
+        cmd: &'a command::ConfigCommand,
+        arg_c: &mut usize,
+        arg_skips: &mut Vec<usize>,
+    ) -> Skip {
+        for (k, single_arg) in cmd.args.iter().enumerate() {
+            if arg_skips.contains(&k) {
+                continue;
+            }
+            if single_arg.arg_pos == *arg_c {
+                if self.out_of_range_or_different(i, single_arg.arg_type.clone()) {
+                    let hint = match single_arg.arg_type {
+                        enums::ArgType::Executable => {
+                            hints::executables::make_executables_hint()
+                        }
+                        enums::ArgType::Path => hints::filesystem::make_directory_hints(
+                            Self::arg_to_path(&arg),
+                            Some(&single_arg.arg_hint),
+                        ),
+                        enums::ArgType::Text => hints::Hint::default(),
+                    };
+                    self.push_or_replace(i, (single_arg.arg_type.clone(), hint));
+                }
+                *arg_c += 1;
+                arg_skips.push(k);
+                return Skip::Once;
+            }
+        }
+        Skip::None
+    }
+
     fn update_arguments(&mut self) {
         if self.out_of_range_or_different(0, enums::ArgType::Executable) {
             let hint = hints::executables::make_executables_hint();
@@ -139,14 +245,11 @@ impl<'a> InputBuffer<'a> {
         }
 
         let first_arg = {
-            let (start, stop) = match self.arg_locs_iterator().nth(0) {
-                Some(v) => v,
-                None => {
-                    self.current_command = None;
-                    (0, 0)
-                }
-            };
-            self.buffer[start..stop].iter().collect::<String>()
+            if self.num_args() == 0 {
+                self.current_command = None;
+                return;
+            }
+            self.get_buffer_str(self.arg_locs(0))
         };
 
         if !first_arg.is_empty() {
@@ -178,92 +281,56 @@ impl<'a> InputBuffer<'a> {
             return;
         }
 
-        let cmd = &self.current_command.unwrap();
+        let cmd = self.current_command.unwrap();
 
         let mut flag_skips = Vec::with_capacity(cmd.flags.len());
         let mut arg_skips = Vec::with_capacity(cmd.args.len());
         let mut arg_flag_skips = Vec::with_capacity(cmd.arg_flags.len());
 
-        let mut skip = false;
+        let mut skip = Skip::None;
         let mut arg_c = 1;
-        'outer: for (i, arg) in self
+
+        let iter = self
             .arg_locs_iterator()
             .enumerate()
             .map(|(i, range)| (i, self.get_buffer_str(range)))
+            .collect::<Vec<_>>();
+
+        'outer: for (i, arg) in iter
         {
-            if skip {
-                skip = false;
+            if skip == Skip::Once {
+                skip = Skip::None;
                 continue;
             }
             // TODO: Use binary searches instead
-            for (k, arg_flag) in cmd.arg_flags.iter().enumerate() {
-                if arg_skips.contains(&k) {
-                    continue;
-                }
-                if arg_flag.flag_name == arg {
-                    if self.out_of_range_or_different(i, enums::ArgType::Text) {
-                        let hint = hints::Hint::default();
-                        self.push_or_replace(i, (enums::ArgType::Text, hint));
-                    }
-                    if self.out_of_range_or_different(i + 1, arg_flag.arg_type) {
-                        let hint = match arg_flag.arg_type {
-                            enums::ArgType::Executable => {
-                                hints::executables::make_executables_hint()
-                            }
-                            enums::ArgType::Path => hints::filesystem::make_directory_hints(
-                                Self::arg_to_path(&arg),
-                                Some(&arg_flag.arg_hint),
-                            ),
-                            enums::ArgType::Text => hints::Hint::default(),
-                        };
-                        self.push_or_replace(i + 1, (arg_flag.arg_type, hint));
-                    } else if arg_flag.arg_type == enums::ArgType::Path {
-                        hints::filesystem::update_directory_hints(
-                            &Self::arg_to_path(&arg),
-                            &mut self.argument_hints[i + 1].1,
-                        );
-                    }
-                    skip = true;
-                    arg_flag_skips.push(k);
-                    continue 'outer;
-                }
+            skip = Self::process_arg_flags(self, i, &arg, cmd, &mut arg_flag_skips);
+
+            if skip == Skip::Once {
+                skip = Skip::None;
+                continue 'outer;
+            } else if skip == Skip::Twice {
+                skip = Skip::Once;
+                continue 'outer;
             }
 
-            for (k, flag) in cmd.flags.iter().enumerate() {
-                if flag_skips.contains(&k) {
-                    continue;
-                }
-                if flag.flag_name == arg {
-                    if self.out_of_range_or_different(i, enums::ArgType::Text) {
-                        self.push_or_replace(i, (enums::ArgType::Text, hints::Hint::default()));
-                    }
-                    flag_skips.push(k);
-                    continue 'outer;
-                }
+            skip = Self::process_flags(self, i, &arg, cmd, &mut flag_skips);
+
+            if skip == Skip::Once {
+                skip = Skip::None;
+                continue 'outer;
+            } else if skip == Skip::Twice {
+                skip = Skip::Once;
+                continue 'outer;
             }
 
-            for (k, single_arg) in cmd.args.iter().enumerate() {
-                if arg_skips.contains(&k) {
-                    continue;
-                }
-                if single_arg.arg_pos == arg_c {
-                    if self.out_of_range_or_different(i, single_arg.arg_type) {
-                        let hint = match single_arg.arg_type {
-                            enums::ArgType::Executable => {
-                                hints::executables::make_executables_hint()
-                            }
-                            enums::ArgType::Path => hints::filesystem::make_directory_hints(
-                                Self::arg_to_path(&arg),
-                                Some(&single_arg.arg_hint),
-                            ),
-                            enums::ArgType::Text => hints::Hint::default(),
-                        };
-                        self.push_or_replace(i, (single_arg.arg_type, hint));
-                    }
-                    arg_c += 1;
-                    arg_skips.push(k);
-                    continue 'outer;
-                }
+            skip = Self::process_args(self, i, &arg, cmd, &mut arg_c, &mut arg_skips);
+
+            if skip == Skip::Once {
+                skip = Skip::None;
+                continue 'outer;
+            } else if skip == Skip::Twice {
+                skip = Skip::Once;
+                continue 'outer;
             }
         }
     }
@@ -290,6 +357,7 @@ impl<'a> InputBuffer<'a> {
         if self.split_locs.len() % 2 == 1 {
             self.split_locs.push(self.input_length);
         }
+        self.update_arguments();
     }
 
     /// Returns index of closest split_loc
@@ -417,10 +485,13 @@ impl<'a> InputBuffer<'a> {
 mod tests {
     use crate::{config, state};
 
+    fn default_program_state() -> state::ProgramState {
+        state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new())
+    }
+
     #[test]
     fn test_buffer_insert_char() {
-        let program_state =
-            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let program_state = default_program_state();
         let mut buffer = super::InputBuffer::init(&program_state);
         assert_eq!(buffer.len(), 0);
 
@@ -440,8 +511,7 @@ mod tests {
 
     #[test]
     fn test_buffer_insert_str() {
-        let program_state =
-            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let program_state = default_program_state();
         let mut buffer = super::InputBuffer::init(&program_state);
         assert_eq!(buffer.len(), 0);
 
@@ -459,8 +529,7 @@ mod tests {
 
     #[test]
     fn test_buffer_delete_between_cursors() {
-        let program_state =
-            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let program_state = default_program_state();
         let mut buffer = super::InputBuffer::init(&program_state);
         buffer.insert_str_main_cursor("abcdef");
         buffer.main_cursor.position = 0;
@@ -475,8 +544,7 @@ mod tests {
 
     #[test]
     fn test_buffer_update() {
-        let program_state =
-            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let program_state = default_program_state();
         let mut buffer = super::InputBuffer::init(&program_state);
         buffer.insert_str_main_cursor("abc def ghi");
         buffer.update();
@@ -501,8 +569,7 @@ mod tests {
 
     #[test]
     fn test_buffer_closest_split() {
-        let program_state =
-            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let program_state = default_program_state();
         let mut buffer = super::InputBuffer::init(&program_state);
         buffer.insert_str_main_cursor("abc defg hi jklm");
         buffer.update();
@@ -531,8 +598,7 @@ mod tests {
 
     #[test]
     fn test_buffer_jump() {
-        let program_state =
-            state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new());
+        let program_state = default_program_state();
         let mut buffer = super::InputBuffer::init(&program_state);
         buffer.insert_str_main_cursor("abc defg hi jklm");
         buffer.update();
@@ -556,6 +622,38 @@ mod tests {
         buffer.main_cursor.position = 12;
         assert_eq!(buffer.jump(super::Side::Left, &buffer.main_cursor), 11);
         assert_eq!(buffer.jump(super::Side::Right, &buffer.main_cursor), 16);
+    }
+
+    use crate::{enums, config::command};
+
+    #[test]
+    fn test_argument_types() {
+        let mut program_state = default_program_state();
+        let mv_cmd = command::ConfigCommand {
+            exe_name: "mv".to_string(),
+            exe_to: "move".to_string(),
+            execute_before: None,
+            execute_after: None,
+            args: vec![
+                command::SingleArg {
+                    arg_type: enums::ArgType::Path,
+                    arg_hint: "".to_string(),
+                    arg_pos: 1,
+                },
+                command::SingleArg {
+                    arg_type: enums::ArgType::Path,
+                    arg_hint: "".to_string(),
+                    arg_pos: 2,
+                },
+            ],
+            flags: vec![],
+            arg_flags: vec![],
+        };
+        program_state.config.commands = vec![mv_cmd];
+        let mut buffer = super::InputBuffer::init(&program_state);
+        buffer.insert_str_main_cursor("mv sdf asda");
+        buffer.update();
+        assert_eq!(buffer.get_argument_hints().len(), 2);
     }
 }
 
