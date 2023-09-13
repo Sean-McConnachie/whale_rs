@@ -135,8 +135,22 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
-    fn arg_to_path(s: &str) -> path::PathBuf {
-        todo!()
+    fn arg_to_path(&self, s: &str) -> path::PathBuf {
+        let p = path::PathBuf::from(s);
+        let p = match p.is_relative() {
+            true => self.program_state.current_working_directory.join(p),
+            false => p,
+        };
+
+        let mut cleaned_path = path::PathBuf::new();
+        for dir in p.iter() {
+            if dir == ".." {
+                cleaned_path.pop();
+            } else {
+                let _ = cleaned_path.join(dir);
+            }
+        }
+        cleaned_path
     }
 
     fn process_arg_flags(
@@ -162,7 +176,7 @@ impl<'a> InputBuffer<'a> {
                             hints::executables::make_executables_hint()
                         }
                         enums::ArgType::Path => hints::filesystem::make_directory_hints(
-                            Self::arg_to_path(&arg),
+                            self.arg_to_path(&arg),
                             Some(&arg_flag.arg_hint),
                         ),
                         enums::ArgType::Text => hints::Hint::default(),
@@ -170,7 +184,7 @@ impl<'a> InputBuffer<'a> {
                     self.push_or_replace(i + 1, (arg_flag.arg_type.clone(), hint));
                 } else if arg_flag.arg_type == enums::ArgType::Path {
                     hints::filesystem::update_directory_hints(
-                        &Self::arg_to_path(&arg),
+                        &self.arg_to_path(&arg),
                         &mut self.argument_hints[i + 1].1,
                     );
                 }
@@ -223,7 +237,7 @@ impl<'a> InputBuffer<'a> {
                             hints::executables::make_executables_hint()
                         }
                         enums::ArgType::Path => hints::filesystem::make_directory_hints(
-                            Self::arg_to_path(&arg),
+                            self.arg_to_path(&arg),
                             Some(&single_arg.arg_hint),
                         ),
                         enums::ArgType::Text => hints::Hint::default(),
@@ -270,7 +284,7 @@ impl<'a> InputBuffer<'a> {
         if self.current_command.is_none() {
             for arg_i in 1..self.num_args() {
                 let arg = self.get_buffer_str(self.arg_locs(arg_i));
-                let path = Self::arg_to_path(&arg);
+                let path = self.arg_to_path(&arg);
                 if self.out_of_range_or_different(arg_i, enums::ArgType::Path) {
                     let hint = hints::filesystem::make_directory_hints(path, None);
                     self.push_or_replace(arg_i, (enums::ArgType::Path, hint));
@@ -292,11 +306,11 @@ impl<'a> InputBuffer<'a> {
 
         let iter = self
             .arg_locs_iterator()
-            .enumerate()
-            .map(|(i, range)| (i, self.get_buffer_str(range)))
+            .map(|range| self.get_buffer_str(range))
             .collect::<Vec<_>>();
 
-        'outer: for (i, arg) in iter
+
+        'outer: for (i, arg) in iter.iter().enumerate().skip(1)
         {
             if skip == Skip::Once {
                 skip = Skip::None;
@@ -479,6 +493,16 @@ impl<'a> InputBuffer<'a> {
             (self.main_cursor.position, self.main_cursor.position)
         }
     }
+
+    pub fn clear_all(&mut self) {
+        self.input_length = 0;
+        self.quote_locs.clear();
+        self.split_locs.clear();
+        self.argument_hints.clear();
+        self.current_command = None;
+        self.main_cursor.position = 0;
+        self.secondary_cursor.active = false;
+    }
 }
 
 #[cfg(test)]
@@ -637,23 +661,56 @@ mod tests {
             args: vec![
                 command::SingleArg {
                     arg_type: enums::ArgType::Path,
-                    arg_hint: "".to_string(),
+                    arg_hint: "src".to_string(),
                     arg_pos: 1,
                 },
                 command::SingleArg {
                     arg_type: enums::ArgType::Path,
-                    arg_hint: "".to_string(),
+                    arg_hint: "dst".to_string(),
                     arg_pos: 2,
                 },
             ],
-            flags: vec![],
-            arg_flags: vec![],
+            flags: vec![
+                command::Flag {
+                    flag_name: "-f".to_string(),
+                    flag_to: "--force".to_string(),
+
+                    execute_before: None,
+                    execute_after: None,
+                }
+            ],
+            arg_flags: vec![
+                command::FlagArgPair {
+                    flag_name: "-h".to_string(),
+                    flag_to: "--help".to_string(),
+
+                    arg_type: enums::ArgType::Executable,
+                    arg_hint: "subcommand".to_string(),
+
+                    execute_before: None,
+                    execute_after: None,
+                }
+            ],
         };
         program_state.config.commands = vec![mv_cmd];
         let mut buffer = super::InputBuffer::init(&program_state);
-        buffer.insert_str_main_cursor("mv sdf asda");
+        buffer.insert_str_main_cursor("mv somewhere tohere");
         buffer.update();
-        assert_eq!(buffer.get_argument_hints().len(), 2);
+
+        assert_eq!(buffer.argument_hints[0].0, enums::ArgType::Executable);
+        assert_eq!(buffer.argument_hints[1].0, enums::ArgType::Path);
+        assert_eq!(buffer.argument_hints[2].0, enums::ArgType::Path);
+
+        buffer.clear_all();
+        buffer.insert_str_main_cursor("mv -f somewhere -h aahhhhh tohere");
+        buffer.update();
+
+        assert_eq!(buffer.argument_hints[0].0, enums::ArgType::Executable);
+        assert_eq!(buffer.argument_hints[1].0, enums::ArgType::Text);
+        assert_eq!(buffer.argument_hints[2].0, enums::ArgType::Path);
+        assert_eq!(buffer.argument_hints[3].0, enums::ArgType::Text);
+        assert_eq!(buffer.argument_hints[4].0, enums::ArgType::Executable);
+        assert_eq!(buffer.argument_hints[5].0, enums::ArgType::Path);
     }
 }
 
