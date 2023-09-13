@@ -16,6 +16,21 @@ pub struct ConfigTheme {
     pub error: StylePair,
 }
 
+impl ConfigTheme {
+    pub fn generate_escape_sequences(&mut self) {
+        self.executable.generate_escape_sequences();
+        self.path.generate_escape_sequences();
+
+        self.flag.generate_escape_sequences();
+        self.arg.generate_escape_sequences();
+        self.text.generate_escape_sequences();
+
+        self.console_main.generate_escape_sequences();
+        self.console_secondary.generate_escape_sequences();
+        self.error.generate_escape_sequences();
+    }
+}
+
 impl Default for ConfigTheme {
     fn default() -> Self {
         use Color as C;
@@ -71,6 +86,11 @@ impl StylePair {
             normal,
             highlighted,
         }
+    }
+
+    pub fn generate_escape_sequences(&mut self) {
+        self.highlighted.generate_escape_sequence();
+        self.normal.generate_escape_sequence();
     }
 }
 

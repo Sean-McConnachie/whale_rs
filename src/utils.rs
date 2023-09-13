@@ -5,6 +5,11 @@ use std::{
     path,
 };
 
+#[cfg(target_os = "windows")]
+const DELIMITER: char = '\\';
+#[cfg(target_os = "linux")]
+const DELIMITER: char = '/';
+
 pub fn short_path(full_path: &path::PathBuf) -> String {
     let mut output = full_path.to_str().unwrap()[0..2].to_string();
     output.push(' ');
@@ -15,7 +20,7 @@ pub fn short_path(full_path: &path::PathBuf) -> String {
     for i in 2..dirs.len() - 1 {
         let dir = dirs[i];
         output.push_str(&dir[0..1]);
-        output.push('\\');
+        output.push(DELIMITER);
     }
     output.push_str(dirs.last().unwrap());
     output.push_str(" > ");

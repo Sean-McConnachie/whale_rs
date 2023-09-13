@@ -36,7 +36,8 @@ pub fn read_or_create_all_configs() -> FullConfig {
     let cfg_history: history::ConfigHistory = read_or_create_config(&config_dir.join("history.toml")).unwrap_or_default();
 
 
-    let cfg_theme: theme::ConfigTheme = read_or_create_config(&config_dir.join("theme.toml")).unwrap_or_default();
+    let mut cfg_theme: theme::ConfigTheme = read_or_create_config(&config_dir.join("theme.toml")).unwrap_or_default();
+    cfg_theme.generate_escape_sequences();
 
     let cfg_gui: gui::ConfigGUI = read_or_create_config(&config_dir.join("gui.toml")).unwrap_or_default();
 

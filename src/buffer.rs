@@ -25,7 +25,7 @@ pub enum CursorType {
     Secondary,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Cursor {
     position: BufferPosition,
     active: bool,
@@ -427,6 +427,30 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
+    pub fn main_cur(&self) -> &Cursor {
+        &self.main_cursor
+    }
+
+    pub fn sec_cur(&self) -> &Cursor {
+        &self.secondary_cursor
+    }
+
+    pub fn del_jump(&mut self, side: Side) {
+        if !self.secondary_cursor.active || self.secondary_cursor == self.main_cursor {
+            let new_pos = self.jump(side, &self.secondary_cursor);
+            self.secondary_cursor.position = new_pos;
+        }
+        self.del_betw_curs();
+    }
+
+    pub fn del_n(&mut self, side: Side, n: BufferPosition) {
+        if !self.secondary_cursor.active || self.secondary_cursor == self.main_cursor {
+            let new_pos = self.move_n(side, n, &self.secondary_cursor);
+            self.secondary_cursor.position = new_pos;
+        }
+        self.del_betw_curs();
+    }
+
     pub fn move_n(&self, side: Side, n: BufferPosition, cursor: &Cursor) -> BufferPosition {
         if !cursor.active {
             panic!("Cursor is not active");
@@ -468,7 +492,7 @@ impl<'a> InputBuffer<'a> {
         self.input_length += s.len();
     }
 
-    pub fn delete_between_cursors(&mut self) {
+    pub fn del_betw_curs(&mut self) {
         let (start, stop) = self.cursor_range();
         for i in stop..self.input_length {
             self.buffer[start + i - stop] = self.buffer[i];
@@ -520,6 +544,7 @@ mod tests {
         assert_eq!(buffer.len(), 0);
 
         buffer.insert_char_main_cursor('a');
+        assert_eq!(buffer.len(), 1);
         buffer.insert_char_main_cursor('b');
         buffer.insert_char_main_cursor('c');
 
@@ -560,7 +585,7 @@ mod tests {
         buffer.secondary_cursor.position = 3;
         buffer.secondary_cursor.active = true;
 
-        buffer.delete_between_cursors();
+        buffer.del_betw_curs();
 
         assert_eq!(buffer.len(), 3);
         assert_eq!(buffer.get_buffer(), &['d', 'e', 'f']);

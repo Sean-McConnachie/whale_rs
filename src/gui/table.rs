@@ -13,8 +13,12 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
         &mut self,
         event: input::InputEvent,
         term_size: super::TerminalXY,
-    ) -> super::PropagateAction {
-        unimplemented!()
+    ) {
+        todo!()
+    }
+
+    fn action_on_buffer(&self, event: input::InputEvent) -> super::PropagateAction {
+        todo!()
     }
 
     fn clear_output(&mut self) -> () {}

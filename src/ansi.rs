@@ -50,6 +50,7 @@ pub fn move_to_line(line: u16) {
     print!("{}[{};0H", ESCAPE_CODE, line);
 }
 
+/// 0 indexed
 pub fn move_to(line: u16, column: u16) {
     print!("{}[{};{}H", ESCAPE_CODE, line, column);
 }
