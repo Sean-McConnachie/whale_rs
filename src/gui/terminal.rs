@@ -135,6 +135,7 @@ impl<'a> TerminalGUI<'a>
             view.write_output(event, term_size);
         }
 
+        ansi::reset();
         ansi::flush();
     }
 

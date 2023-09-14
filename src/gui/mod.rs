@@ -19,7 +19,6 @@ pub trait GUITrait<'a> {
 }
 
 pub fn output_str(style: &theme::Style, s: &str) {
-    ansi::reset();
     print!("{}{}", style.escape_sequence, s);
 }
 

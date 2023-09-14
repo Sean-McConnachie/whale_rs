@@ -19,7 +19,7 @@ pub fn line_number_set(line_number: u16) {
 }
 
 pub fn reset() {
-    print!("{}0", ESCAPE_CODE);
+    print!("{}[0m", ESCAPE_CODE);
 }
 
 pub fn flush() {

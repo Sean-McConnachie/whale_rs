@@ -128,13 +128,22 @@ impl Style {
             .collect::<Vec<_>>()
             .join(";");
 
-        self.escape_sequence = format!(
-            "{}[{};{}{}m",
-            ESCAPE_CODE,
-            codes,
-            self.foreground.foreground_code(),
-            background
-        );
+        self.escape_sequence = if !codes.is_empty() {
+            format!(
+                "{}[{};{}{}m",
+                ESCAPE_CODE,
+                codes,
+                self.foreground.foreground_code(),
+                background
+            )
+        } else {
+            format!(
+                "{}[{}{}m",
+                ESCAPE_CODE,
+                self.foreground.foreground_code(),
+                background
+            )
+        };
     }
 }
 

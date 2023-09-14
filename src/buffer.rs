@@ -417,7 +417,7 @@ impl<'a> InputBuffer<'a> {
         match side {
             Side::Left => self.split_locs[(arg_i as i64 - 1).max(0) as usize],
             Side::Right => {
-                if arg_i == self.split_locs.len() - 1 {
+                if arg_i >= self.split_locs.len() - 1 {
                     self.input_length
                 } else {
                     self.split_locs[arg_i + 1]
@@ -478,7 +478,7 @@ impl<'a> InputBuffer<'a> {
 
         match side {
             Side::Left => (cursor.position as i64 - n as i64).max(0i64) as BufferPosition,
-            Side::Right => (cursor.position + n).min(self.input_length),
+            Side::Right => (cursor.position + n).min(self.input_length - 1),
             _ => panic!("Side is neither"),
         }
     }

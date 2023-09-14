@@ -41,7 +41,7 @@ foreground = "White"
 [text.highlighted]
 modifiers = []
 foreground = "White"
-background = "Black"
+background = "Magenta"
 
 [console_main.normal]
 modifiers = ["Bold"]
