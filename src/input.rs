@@ -29,6 +29,9 @@ pub enum InputEvent {
     ShiftArrowDown,
     ShiftArrowLeft,
 
+    AltArrowLeft,
+    AltArrowRight,
+
     CtrlArrowRight,
     CtrlArrowLeft,
 
@@ -146,6 +149,8 @@ pub fn get_input() -> Result<InputEvent, std::io::Error> {
                     InputEvent::ShiftArrowLeft
                 } else if key_event.modifiers == KeyModifiers::CONTROL {
                     InputEvent::CtrlArrowLeft
+                } else if key_event.modifiers == KeyModifiers::ALT {
+                    InputEvent::AltArrowLeft
                 } else if key_event.modifiers == KeyModifiers::NONE {
                     InputEvent::ArrowLeft
                 } else {
@@ -171,6 +176,8 @@ pub fn get_input() -> Result<InputEvent, std::io::Error> {
                     InputEvent::ShiftArrowRight
                 } else if key_event.modifiers == KeyModifiers::CONTROL {
                     InputEvent::CtrlArrowRight
+                } else if key_event.modifiers == KeyModifiers::ALT {
+                    InputEvent::AltArrowRight
                 } else if key_event.modifiers == KeyModifiers::NONE {
                     InputEvent::ArrowRight
                 } else {

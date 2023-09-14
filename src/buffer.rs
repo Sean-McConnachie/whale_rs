@@ -435,8 +435,26 @@ impl<'a> InputBuffer<'a> {
         &self.secondary_cursor
     }
 
+    pub fn main_cur_set(&mut self, p: BufferPosition) {
+        self.main_cursor.position = p;
+    }
+
+    pub fn sec_cur_set(&mut self, p: BufferPosition, active: bool) {
+        self.secondary_cursor.position = p;
+        self.secondary_cursor.active = active;
+    }
+
+    pub fn enable_sec_cur_if_not_active(&mut self) {
+        if !self.secondary_cursor.active {
+            self.secondary_cursor.active = true;
+            self.secondary_cursor.position = self.main_cursor.position;
+        }
+    }
+
     pub fn del_jump(&mut self, side: Side) {
         if !self.secondary_cursor.active || self.secondary_cursor == self.main_cursor {
+            self.secondary_cursor.active = true;
+            self.secondary_cursor.position = self.main_cursor.position;
             let new_pos = self.jump(side, &self.secondary_cursor);
             self.secondary_cursor.position = new_pos;
         }
@@ -444,7 +462,9 @@ impl<'a> InputBuffer<'a> {
     }
 
     pub fn del_n(&mut self, side: Side, n: BufferPosition) {
-        if !self.secondary_cursor.active || self.secondary_cursor == self.main_cursor {
+        if !self.secondary_cursor.active || (self.secondary_cursor.active && self.secondary_cursor == self.main_cursor) {
+            self.secondary_cursor.active = true;
+            self.secondary_cursor.position = self.main_cursor.position;
             let new_pos = self.move_n(side, n, &self.secondary_cursor);
             self.secondary_cursor.position = new_pos;
         }
@@ -457,7 +477,7 @@ impl<'a> InputBuffer<'a> {
         }
 
         match side {
-            Side::Left => (cursor.position as i64 - n as i64).max(0) as BufferPosition,
+            Side::Left => (cursor.position as i64 - n as i64).max(0i64) as BufferPosition,
             Side::Right => (cursor.position + n).min(self.input_length),
             _ => panic!("Side is neither"),
         }

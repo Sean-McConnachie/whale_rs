@@ -13,13 +13,13 @@ pub type PropagateAction = bool;
 
 pub trait GUITrait<'a> {
     fn init(program_state: &'a state::ProgramState) -> Self;
-    fn write_output(&mut self, event: input::InputEvent, term_size: TerminalXY);
-    fn action_on_buffer(&self, event: input::InputEvent) -> PropagateAction;
+    fn write_output(&mut self, event: InputEvent, term_size: TerminalXY);
+    fn action_on_buffer(&self, event: InputEvent) -> PropagateAction;
     fn clear_output(&mut self) -> ();
 }
 
 pub fn output_str(style: &theme::Style, s: &str) {
-    // ansi::reset();
+    ansi::reset();
     print!("{}{}", style.escape_sequence, s);
 }
 
@@ -32,7 +32,7 @@ impl<'a> GUITrait<'a> for AdditionalView<'a> {
         panic!("Don't call this through the enum!")
     }
 
-    fn write_output(&mut self, event: input::InputEvent, term_size: TerminalXY) {
+    fn write_output(&mut self, event: InputEvent, term_size: TerminalXY) {
         match self {
             Self::Table(table) => table.write_output(event, term_size),
         };

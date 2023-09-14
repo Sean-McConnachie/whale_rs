@@ -1,10 +1,11 @@
 use whale_rs::input::InputEvent as IEvent;
+use whale_rs::buffer::Side;
 
 fn update_buffer(input: whale_rs::input::InputEvent, buffer: &mut whale_rs::buffer::InputBuffer) {
     match input {
         IEvent::Esc => buffer.unset_secondary_cursor(),
-        IEvent::Backspace => buffer.del_n(whale_rs::buffer::Side::Left, 1),
-        IEvent::Delete => buffer.del_n(whale_rs::buffer::Side::Right, 1),
+        IEvent::Backspace => buffer.del_n(Side::Left, 1),
+        IEvent::Delete => buffer.del_n(Side::Right, 1),
         IEvent::Enter => {
             // TODO: Run
             // buffer.enter();
@@ -14,30 +15,64 @@ fn update_buffer(input: whale_rs::input::InputEvent, buffer: &mut whale_rs::buff
             // TODO: Tab
             // buffer.tab()
         }
-        IEvent::Character(c) => buffer.insert_char_main_cursor(c),
-        IEvent::CtrlBackspace => buffer.del_jump(whale_rs::buffer::Side::Left),
-        IEvent::CtrlDelete => buffer.del_jump(whale_rs::buffer::Side::Left),
+        IEvent::Character(c) => {
+            buffer.del_betw_curs();
+            buffer.insert_char_main_cursor(c);
+        },
+        IEvent::CtrlBackspace => buffer.del_jump(Side::Left),
+        IEvent::CtrlDelete => buffer.del_jump(Side::Left),
+        IEvent::CtrlC => unreachable!("This should be handled outside of the match statement!"),
+
+        IEvent::ArrowLeft => {
+            buffer.main_cur_set(buffer.move_n(Side::Left, 1, buffer.main_cur()));
+            buffer.unset_secondary_cursor();
+        },
+        IEvent::ArrowRight => {
+            buffer.main_cur_set(buffer.move_n(Side::Right, 1, buffer.main_cur()));
+            buffer.unset_secondary_cursor();
+        },
+
+        IEvent::CtrlArrowLeft => {
+            buffer.main_cur_set(buffer.jump(Side::Left, buffer.main_cur()));
+            buffer.unset_secondary_cursor();
+        },
+        IEvent::CtrlArrowRight => {
+            buffer.main_cur_set(buffer.jump(Side::Right, buffer.main_cur()));
+            buffer.unset_secondary_cursor();
+        },
+
+        IEvent::AltArrowLeft => {
+            buffer.enable_sec_cur_if_not_active();
+            let new_pos = buffer.move_n(Side::Left, 1, buffer.sec_cur());
+            buffer.sec_cur_set(new_pos, true)
+        },
+        IEvent::AltArrowRight => {
+            buffer.enable_sec_cur_if_not_active();
+            let new_pos = buffer.move_n(Side::Right, 1, buffer.sec_cur());
+            buffer.sec_cur_set(new_pos, true);
+        },
+
+        IEvent::CtrlShiftArrowLeft => {
+            buffer.enable_sec_cur_if_not_active();
+            let new_pos = buffer.jump(Side::Left, buffer.sec_cur());
+            buffer.sec_cur_set(new_pos, true)
+        },
+        IEvent::CtrlShiftArrowRight => {
+            buffer.enable_sec_cur_if_not_active();
+            let new_pos = buffer.jump(Side::Right, buffer.sec_cur());
+            buffer.sec_cur_set(new_pos, true)
+        },
         _ => ()
-        // IEvent::CtrlC => buffer.ctrl_c(),
         // IEvent::CtrlD => buffer.ctrl_d(),
         // IEvent::CtrlS => buffer.ctrl_s(),
         // IEvent::CtrlT => buffer.ctrl_t(),
         //
         // IEvent::ArrowUp => buffer.up(),
         // IEvent::ArrowDown => buffer.down(),
-        // IEvent::ArrowLeft => buffer.left(),
-        // IEvent::ArrowRight => buffer.right(),
-        //
-        // IEvent::CtrlArrowLeft => buffer.ctrl_left(),
-        // IEvent::CtrlArrowRight => buffer.ctrl_right(),
         //
         // IEvent::ShiftArrowUp => buffer.shift_up(),
         // IEvent::ShiftArrowDown => buffer.shift_down(),
-        // IEvent::ShiftArrowLeft => buffer.shift_left(),
-        // IEvent::ShiftArrowRight => buffer.shift_right(),
         //
-        // IEvent::CtrlShiftArrowLeft => buffer.ctrl_shift_left(),
-        // IEvent::CtrlShiftArrowRight => buffer.ctrl_shift_right(),
         //
         // IEvent::Resize(size) => buffer.resize(size),
         // IEvent::Other(key) => buffer.other(key),
@@ -71,6 +106,7 @@ fn runtime_loop(
         }
 
         terminal_gui.write_output(&buffer, input, TODO_REMOVE);
+        // println!("{:?}", input);
     }
 }
 

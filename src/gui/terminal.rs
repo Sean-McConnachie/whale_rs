@@ -1,6 +1,25 @@
 use crate::{state, utils, input, buffer, enums, ansi};
+use crate::buffer::BufferPosition;
+use crate::config::theme;
 
 use super::GUITrait;
+
+#[derive(Debug, PartialEq)]
+enum HighlightState {
+    BeforeHighlight,
+    InHighlight,
+    AfterHighlight,
+}
+
+impl HighlightState {
+    fn next(&mut self) {
+        match self {
+            Self::BeforeHighlight => *self = Self::InHighlight,
+            Self::InHighlight => *self = Self::AfterHighlight,
+            Self::AfterHighlight => panic!("Cannot call next() on AfterHighlight"),
+        }
+    }
+}
 
 pub struct TerminalGUI<'a>
 {
@@ -22,23 +41,80 @@ impl<'a> TerminalGUI<'a>
     }
 
     fn output_buffer(&self, buf: &buffer::InputBuffer) {
+        if buf.len() == 0 { return; }
+        fn handle_normal_arg(style: &theme::StylePair, arg: &str, highlighted: bool) {
+            match highlighted {
+                true => super::output_str(&style.highlighted, arg),
+                false => super::output_str(&style.normal, arg),
+            }
+        }
+
+        fn handle_split_arg(style: &theme::StylePair, arg: &str, mut highlighted: bool, split_at: usize) {
+            let (a, b) = arg.split_at(split_at);
+            match highlighted {
+                true => super::output_str(&style.highlighted, a),
+                false => super::output_str(&style.normal, a),
+            }
+            highlighted = !highlighted;
+            match highlighted {
+                true => super::output_str(&style.highlighted, b),
+                false => super::output_str(&style.normal, b),
+            }
+        }
+
         let theme = &self.program_state.config.theme;
 
         let (cur_a, cur_b) = buf.cursor_range();
         let arg_hints = buf.get_argument_hints();
+        let splits = buf.get_splits();
 
-        for ((arg_type, hint), loc) in buf
-            .arg_locs_iterator()
-            .enumerate()
-            .map(|(i, loc)|
-                (&arg_hints[i], loc)) {
-            let arg = buf.get_buffer_str(loc);
-            let style = match arg_type {
-                enums::ArgType::Executable => &theme.executable,
-                enums::ArgType::Path => &theme.path,
-                enums::ArgType::Text => &theme.text
+        let (mut high_s, mut high_b) = if cur_a == cur_b {
+            (HighlightState::AfterHighlight, false)
+        } else if cur_a == 0 {
+            (HighlightState::InHighlight, true)
+        } else {
+            (HighlightState::BeforeHighlight, false)
+        };
+
+        for i in 0..splits.len() - 1 {
+            let locs = (splits[i], splits[i + 1]);
+            let style = match i % 2 == 1 {
+                true => &theme.text,
+                false => {
+                    let arg = &arg_hints[i / 2];
+                    match arg.0 {
+                        enums::ArgType::Executable => &theme.executable,
+                        enums::ArgType::Path => &theme.path,
+                        enums::ArgType::Text => &theme.text
+                    }
+                }
             };
-            super::output_str(&style.normal, &arg);
+            let arg = buf.get_buffer_str(locs);
+
+            let (start, stop) = locs;
+            match high_s {
+                HighlightState::BeforeHighlight => {
+                    if cur_a >= start && cur_a < stop {
+                        handle_split_arg(&style, &arg, high_b, cur_a - start);
+                        high_s.next();
+                        high_b = !high_b;
+                    } else {
+                        handle_normal_arg(&style, &arg, high_b);
+                    }
+                }
+                HighlightState::InHighlight => {
+                    if cur_b >= start && cur_b < stop {
+                        handle_split_arg(&style, &arg, high_b, cur_b - start);
+                        high_s.next();
+                        high_b = !high_b;
+                    } else {
+                        handle_normal_arg(&style, &arg, high_b);
+                    }
+                }
+                HighlightState::AfterHighlight => {
+                    handle_normal_arg(&style, &arg, high_b);
+                }
+            }
         }
     }
 
@@ -62,7 +138,7 @@ impl<'a> TerminalGUI<'a>
         ansi::flush();
     }
 
-    pub fn action_on_buffer(&self, event: input::InputEvent, ) -> super::PropagateAction {
+    pub fn action_on_buffer(&self, event: input::InputEvent) -> super::PropagateAction {
         if let Some(view) = &self.additional_view {
             return view.action_on_buffer(event);
         }
