@@ -1,10 +1,9 @@
-use crate::{ansi, config::theme, input, state};
+use crate::{config::theme, state};
+use crate::ansi::TerminalXY;
 use crate::input::InputEvent;
 
 pub mod table;
 pub mod terminal;
-
-pub type TerminalXY = (usize, usize);
 
 /// When a GUITrait is active, a keyboard event has the option of being blocked by that GUITrait.
 /// If this is the case, `PropagateAction = false` which, generally, results in the `InputBuffer`

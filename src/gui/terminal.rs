@@ -1,5 +1,4 @@
 use crate::{state, utils, input, buffer, enums, ansi};
-use crate::buffer::BufferPosition;
 use crate::config::theme;
 
 use super::GUITrait;
@@ -26,12 +25,18 @@ pub struct TerminalGUI<'a>
     program_state: &'a state::ProgramState,
 
     additional_view: Option<super::AdditionalView<'a>>,
+
+    current_line: u16,
 }
 
 impl<'a> TerminalGUI<'a>
 {
     pub fn init(program_state: &'a state::ProgramState) -> Self {
-        Self { program_state, additional_view: None }
+        Self {
+            program_state,
+            additional_view: None,
+            current_line: 0,
+        }
     }
 
     pub fn output_path(&self) {
@@ -125,7 +130,7 @@ impl<'a> TerminalGUI<'a>
         term_size: super::TerminalXY,
     ) {
         ansi::erase_screen();
-        ansi::move_to(1, 1);
+        ansi::move_to((0, 0));
 
         self.output_path();
 

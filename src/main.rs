@@ -1,7 +1,11 @@
 use whale_rs::input::InputEvent as IEvent;
 use whale_rs::buffer::Side;
 
-fn update_buffer(input: whale_rs::input::InputEvent, buffer: &mut whale_rs::buffer::InputBuffer) {
+fn update_buffer(
+    input: whale_rs::input::InputEvent,
+    buffer: &mut whale_rs::buffer::InputBuffer,
+    term_size: &mut whale_rs::ansi::TerminalXY,
+) {
     match input {
         IEvent::Esc => buffer.unset_secondary_cursor(),
         IEvent::Backspace => buffer.del_n(Side::Left, 1),
@@ -62,6 +66,8 @@ fn update_buffer(input: whale_rs::input::InputEvent, buffer: &mut whale_rs::buff
             let new_pos = buffer.jump(Side::Right, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true)
         },
+
+        IEvent::Resize(size ) => *term_size = size,
         _ => ()
         // IEvent::CtrlD => buffer.ctrl_d(),
         // IEvent::CtrlS => buffer.ctrl_s(),
@@ -74,7 +80,6 @@ fn update_buffer(input: whale_rs::input::InputEvent, buffer: &mut whale_rs::buff
         // IEvent::ShiftArrowDown => buffer.shift_down(),
         //
         //
-        // IEvent::Resize(size) => buffer.resize(size),
         // IEvent::Other(key) => buffer.other(key),
     }
     buffer.update();
@@ -85,13 +90,14 @@ fn runtime_loop(
     mut buffer: whale_rs::buffer::InputBuffer,
     mut terminal_gui: whale_rs::gui::terminal::TerminalGUI,
 ) {
-    let TODO_REMOVE = (0, 0);
+    let mut term_size = crossterm::terminal::size().unwrap();
 
     whale_rs::ansi::erase_screen();
 
     let mut input;
     let mut action_on_buffer;
     loop {
+
         input = match whale_rs::input::get_input() {
             Ok(inp) => inp,
             Err(_) => continue
@@ -102,11 +108,13 @@ fn runtime_loop(
 
         action_on_buffer = terminal_gui.action_on_buffer(input.clone());
         if action_on_buffer {
-            update_buffer(input.clone(), &mut buffer);
+            update_buffer(input.clone(), &mut buffer, &mut term_size);
         }
 
-        terminal_gui.write_output(&buffer, input, TODO_REMOVE);
-        // println!("{:?}", input);
+        terminal_gui.write_output(&buffer, input, term_size);
+
+        let cur = whale_rs::ansi::cursor_pos().unwrap();
+        println!("{:?}", cur);
     }
 }
 
