@@ -125,7 +125,7 @@ pub fn cursor_pos() -> Result<TerminalXY, std::io::Error> {
     let row = row.parse::<u16>().unwrap_or(1);
     let col = col.parse::<u16>().unwrap_or(1);
 
-    Ok((row - 1, col - 1))
+    Ok((col - 1, row - 1))
 }
 
 

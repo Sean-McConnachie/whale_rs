@@ -43,7 +43,7 @@ impl<'a> Hint<'a> {
         } else if s.is_empty() {
             self.selection.first().map(|x| x.as_str())
         } else {
-            match utils::binary_search(&self.selection, s.to_string(), &vec![]) {
+            match utils::first_item(&self.selection, s) {
                 Some(ind) => Some(&self.selection[ind]),
                 None => None,
             }

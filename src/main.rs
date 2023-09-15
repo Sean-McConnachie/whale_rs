@@ -22,7 +22,7 @@ fn update_buffer(
         IEvent::Character(c) => {
             buffer.del_betw_curs();
             buffer.insert_char_main_cursor(c);
-        },
+        }
         IEvent::CtrlBackspace => buffer.del_jump(Side::Left),
         IEvent::CtrlDelete => buffer.del_jump(Side::Left),
         IEvent::CtrlC => unreachable!("This should be handled outside of the match statement!"),
@@ -30,44 +30,44 @@ fn update_buffer(
         IEvent::ArrowLeft => {
             buffer.main_cur_set(buffer.move_n(Side::Left, 1, buffer.main_cur()));
             buffer.unset_secondary_cursor();
-        },
+        }
         IEvent::ArrowRight => {
             buffer.main_cur_set(buffer.move_n(Side::Right, 1, buffer.main_cur()));
             buffer.unset_secondary_cursor();
-        },
+        }
 
         IEvent::CtrlArrowLeft => {
             buffer.main_cur_set(buffer.jump(Side::Left, buffer.main_cur()));
             buffer.unset_secondary_cursor();
-        },
+        }
         IEvent::CtrlArrowRight => {
             buffer.main_cur_set(buffer.jump(Side::Right, buffer.main_cur()));
             buffer.unset_secondary_cursor();
-        },
+        }
 
         IEvent::AltArrowLeft => {
             buffer.enable_sec_cur_if_not_active();
             let new_pos = buffer.move_n(Side::Left, 1, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true)
-        },
+        }
         IEvent::AltArrowRight => {
             buffer.enable_sec_cur_if_not_active();
             let new_pos = buffer.move_n(Side::Right, 1, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true);
-        },
+        }
 
         IEvent::CtrlShiftArrowLeft => {
             buffer.enable_sec_cur_if_not_active();
             let new_pos = buffer.jump(Side::Left, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true)
-        },
+        }
         IEvent::CtrlShiftArrowRight => {
             buffer.enable_sec_cur_if_not_active();
             let new_pos = buffer.jump(Side::Right, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true)
-        },
+        }
 
-        IEvent::Resize(size ) => *term_size = size,
+        IEvent::Resize(size) => *term_size = size,
         _ => ()
         // IEvent::CtrlD => buffer.ctrl_d(),
         // IEvent::CtrlS => buffer.ctrl_s(),
@@ -90,14 +90,13 @@ fn runtime_loop(
     mut buffer: whale_rs::buffer::InputBuffer,
     mut terminal_gui: whale_rs::gui::terminal::TerminalGUI,
 ) {
-    let mut term_size = crossterm::terminal::size().unwrap();
-
     whale_rs::ansi::erase_screen();
+
+    let mut term_size = crossterm::terminal::size().unwrap();
 
     let mut input;
     let mut action_on_buffer;
     loop {
-
         input = match whale_rs::input::get_input() {
             Ok(inp) => inp,
             Err(_) => continue
@@ -112,9 +111,6 @@ fn runtime_loop(
         }
 
         terminal_gui.write_output(&buffer, input, term_size);
-
-        let cur = whale_rs::ansi::cursor_pos().unwrap();
-        println!("{:?}", cur);
     }
 }
 

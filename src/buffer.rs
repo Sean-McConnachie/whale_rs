@@ -35,6 +35,14 @@ impl Cursor {
     pub fn new(position: usize, active: bool) -> Self {
         Self { position, active }
     }
+
+    pub fn position(&self) -> BufferPosition {
+        self.position
+    }
+
+    pub fn active(&self) -> bool {
+        self.active
+    }
 }
 
 #[derive(Debug)]
@@ -135,22 +143,31 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
-    fn arg_to_path(&self, s: &str) -> path::PathBuf {
-        let p = path::PathBuf::from(s);
-        let p = match p.is_relative() {
-            true => self.program_state.current_working_directory.join(p),
-            false => p,
+    fn arg_to_path(&self, s: &str) -> Option<path::PathBuf> {
+        let fp = path::PathBuf::from(s);
+        let fp = match fp.is_relative() {
+            true => self.program_state.current_working_directory.join(fp),
+            false => fp,
         };
 
         let mut cleaned_path = path::PathBuf::new();
-        for dir in p.iter() {
+        for dir in fp.iter() {
             if dir == ".." {
-                cleaned_path.pop();
+                let _ = cleaned_path.pop();
             } else {
-                let _ = cleaned_path.join(dir);
+                cleaned_path.push(dir);
             }
         }
-        cleaned_path
+
+        if cleaned_path.is_dir() {
+            return Some(cleaned_path);
+        }
+        if let Some(p) = cleaned_path.parent() {
+            if p.is_dir() {
+                return Some(cleaned_path.parent().unwrap().to_path_buf());
+            }
+        }
+        None
     }
 
     fn process_arg_flags(
@@ -478,7 +495,7 @@ impl<'a> InputBuffer<'a> {
 
         match side {
             Side::Left => (cursor.position as i64 - n as i64).max(0i64) as BufferPosition,
-            Side::Right => (cursor.position + n).min(self.input_length - 1),
+            Side::Right => (cursor.position + n).min(self.input_length),
             _ => panic!("Side is neither"),
         }
     }

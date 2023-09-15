@@ -1,4 +1,4 @@
-use crate::{config::theme, state};
+use crate::{ansi, config::theme, state};
 use crate::ansi::TerminalXY;
 use crate::input::InputEvent;
 
@@ -18,6 +18,7 @@ pub trait GUITrait<'a> {
 }
 
 pub fn output_str(style: &theme::Style, s: &str) {
+    ansi::reset();
     print!("{}{}", style.escape_sequence, s);
 }
 

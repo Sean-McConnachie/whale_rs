@@ -46,24 +46,26 @@ where
         .open(filename)
 }
 
-pub fn binary_search<T: Ord>(array: &[T], target: T, exclude: &Vec<usize>) -> Option<usize> {
-    let mut low = 0;
-    let mut high = array.len() - 1;
-
-    while low <= high {
-        let mid = (low + high) / 2;
-
-        match array[mid].cmp(&target) {
-            Ordering::Less => low = mid + 1,
-            Ordering::Greater => high = mid - 1,
-            Ordering::Equal => {
-                if exclude.contains(&mid) {
-                    return None;
-                }
-                return Some(mid);
-            }
+pub fn first_item(array: &[String], target: &str) -> Option<usize> {
+    // TODO: This is probably slow
+    for (i, item) in array.iter().enumerate() {
+        if item.starts_with(target) {
+            return Some(i);
         }
     }
+    None
+}
 
+pub fn binary_search<T: Ord>(array: &[T], target: T) -> Option<usize> {
+    let mut low = 0;
+    let mut high = array.len() - 1;
+    while low <= high {
+        let mid = (low + high) / 2;
+        match array[mid].cmp(&target) {
+            Ordering::Less => low = mid + 1,
+            Ordering::Equal => return Some(mid),
+            Ordering::Greater => high = mid - 1,
+        }
+    }
     None
 }

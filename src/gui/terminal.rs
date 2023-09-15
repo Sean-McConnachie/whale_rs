@@ -1,7 +1,9 @@
-use crate::{state, utils, input, buffer, enums, ansi};
+use crate::{state, utils, input, buffer, enums, ansi, hints};
 use crate::config::theme;
 
 use super::GUITrait;
+
+type IncreasedLength = u16;
 
 #[derive(Debug, PartialEq)]
 enum HighlightState {
@@ -20,8 +22,7 @@ impl HighlightState {
     }
 }
 
-pub struct TerminalGUI<'a>
-{
+pub struct TerminalGUI<'a> {
     program_state: &'a state::ProgramState,
 
     additional_view: Option<super::AdditionalView<'a>>,
@@ -39,14 +40,16 @@ impl<'a> TerminalGUI<'a>
         }
     }
 
-    pub fn output_path(&self) {
+    pub fn output_path(&self) -> IncreasedLength {
         let short_cwd = utils::short_path(&self.program_state.current_working_directory);
         let theme = &self.program_state.config.theme;
         super::output_str(&theme.console_main.normal, &short_cwd);
+        short_cwd.len() as IncreasedLength
     }
 
-    fn output_buffer(&self, buf: &buffer::InputBuffer) {
-        if buf.len() == 0 { return; }
+    fn output_buffer(&self, buf: &buffer::InputBuffer) -> IncreasedLength {
+        if buf.len() == 0 { return 0; }
+
         fn handle_normal_arg(style: &theme::StylePair, arg: &str, highlighted: bool) {
             match highlighted {
                 true => super::output_str(&style.highlighted, arg),
@@ -67,18 +70,36 @@ impl<'a> TerminalGUI<'a>
             }
         }
 
+        fn handle_suggestion_arg(
+            style: &theme::StylePair,
+            arg: &str,
+            cur_a: usize,
+            hint_style: &theme::Style,
+            hint: &hints::Hint,
+        ) {
+            if let Some(hint) = hint.closest_match(arg) {
+                super::output_str(&style.normal, &arg[..cur_a]);
+                super::output_str(&hint_style, &hint[cur_a..]);
+                super::output_str(&style.normal, &arg[cur_a..]);
+            } else {
+                super::output_str(&style.normal, &arg);
+            }
+        }
+
         let theme = &self.program_state.config.theme;
 
+        // TODO: Increased length by inline hint
+        let mut increased_length = 0;
         let (cur_a, cur_b) = buf.cursor_range();
         let arg_hints = buf.get_argument_hints();
         let splits = buf.get_splits();
 
-        let (mut high_s, mut high_b) = if cur_a == cur_b {
-            (HighlightState::AfterHighlight, false)
+        let (mut hilt_ste, mut hilt_curr, hilt_active) = if cur_a == cur_b {
+            (HighlightState::AfterHighlight, false, false)
         } else if cur_a == 0 {
-            (HighlightState::InHighlight, true)
+            (HighlightState::InHighlight, true, true)
         } else {
-            (HighlightState::BeforeHighlight, false)
+            (HighlightState::BeforeHighlight, false, true)
         };
 
         for i in 0..splits.len() - 1 {
@@ -97,30 +118,41 @@ impl<'a> TerminalGUI<'a>
             let arg = buf.get_buffer_str(locs);
 
             let (start, stop) = locs;
-            match high_s {
+            match hilt_ste {
                 HighlightState::BeforeHighlight => {
                     if cur_a >= start && cur_a < stop {
-                        handle_split_arg(&style, &arg, high_b, cur_a - start);
-                        high_s.next();
-                        high_b = !high_b;
+                        handle_split_arg(&style, &arg, hilt_curr, cur_a - start);
+                        hilt_ste.next();
+                        hilt_curr = !hilt_curr;
                     } else {
-                        handle_normal_arg(&style, &arg, high_b);
+                        handle_normal_arg(&style, &arg, hilt_curr);
                     }
                 }
                 HighlightState::InHighlight => {
                     if cur_b >= start && cur_b < stop {
-                        handle_split_arg(&style, &arg, high_b, cur_b - start);
-                        high_s.next();
-                        high_b = !high_b;
+                        handle_split_arg(&style, &arg, hilt_curr, cur_b - start);
+                        hilt_ste.next();
+                        hilt_curr = !hilt_curr;
                     } else {
-                        handle_normal_arg(&style, &arg, high_b);
+                        handle_normal_arg(&style, &arg, hilt_curr);
                     }
                 }
                 HighlightState::AfterHighlight => {
-                    handle_normal_arg(&style, &arg, high_b);
+                    // We do not show inline hints when highlighted
+                    if !hilt_active && cur_a >= start && cur_b <= stop {
+                        handle_suggestion_arg(
+                            &style,
+                            &arg,
+                            cur_a - start,
+                            &theme.console_secondary.normal,
+                            &arg_hints[i / 2].1);
+                    } else {
+                        handle_normal_arg(&style, &arg, hilt_curr);
+                    }
                 }
             }
         }
+        increased_length + buf.len() as IncreasedLength
     }
 
     pub fn write_output(
@@ -130,15 +162,27 @@ impl<'a> TerminalGUI<'a>
         term_size: super::TerminalXY,
     ) {
         ansi::erase_screen();
-        ansi::move_to((0, 0));
+        ansi::move_to((0, self.current_line));
 
-        self.output_path();
+        let mut increased_length = self.output_path();
 
-        self.output_buffer(buf);
+        increased_length += self.output_buffer(buf);
 
         if let Some(view) = &mut self.additional_view {
             view.write_output(event, term_size);
         }
+
+        increased_length -= (buf.len() - buf.main_cur().position()) as IncreasedLength;
+        let (cur_x, cur_y) = {
+            // TODO: This shouldn't really equal 0 at any point
+            if term_size.0 == 0 {
+                (0, 0)
+            } else {
+                (increased_length % term_size.0, increased_length / term_size.0)
+            }
+        };
+
+        ansi::move_to((cur_x as u16, self.current_line + cur_y as u16));
 
         ansi::reset();
         ansi::flush();
