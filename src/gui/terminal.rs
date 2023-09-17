@@ -77,9 +77,10 @@ impl<'a> TerminalGUI<'a>
             hint_style: &theme::Style,
             hint: &hints::Hint,
         ) {
-            if let Some(hint) = hint.closest_match(arg) {
+            let disregard = hint.disregard();
+            if let Some(hint) = hint.last_closest_match() {
                 super::output_str(&style.normal, &arg[..cur_a]);
-                super::output_str(&hint_style, &hint[cur_a..]);
+                super::output_str(&hint_style, &hint[(cur_a - disregard)..]);
                 super::output_str(&style.normal, &arg[cur_a..]);
             } else {
                 super::output_str(&style.normal, &arg);
@@ -188,7 +189,15 @@ impl<'a> TerminalGUI<'a>
         ansi::flush();
     }
 
-    pub fn action_on_buffer(&self, event: input::InputEvent) -> super::PropagateAction {
+    pub fn action_on_buffer(&self, buf: &buffer::InputBuffer, event: input::InputEvent) -> super::PropagateAction {
+        if event == input::InputEvent::Tab {
+            let hints = buf.get_argument_hints();
+            if !hints.is_empty() {
+                if hints[buf.get_curr_arg()].1.last_closest_match().is_some() {
+                    return true as super::PropagateAction;
+                }
+            }
+        }
         if let Some(view) = &self.additional_view {
             return view.action_on_buffer(event);
         }

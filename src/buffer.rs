@@ -1,5 +1,6 @@
 use crate::{config, config::command, enums, hints, state};
 use std::path;
+use crate::hints::Disregard;
 
 const BUFFER_LENGTH: usize = 8192;
 
@@ -62,6 +63,8 @@ pub struct InputBuffer<'a> {
     program_state: &'a state::ProgramState,
     current_command: Option<&'a command::ConfigCommand>,
     argument_hints: Vec<(enums::ArgType, hints::Hint<'a>)>,
+
+    curr_arg: usize,
 }
 
 impl<'a> InputBuffer<'a> {
@@ -76,6 +79,7 @@ impl<'a> InputBuffer<'a> {
             argument_hints: Vec::new(),
             current_command: None,
             program_state,
+            curr_arg: 0,
         }
     }
 
@@ -107,6 +111,10 @@ impl<'a> InputBuffer<'a> {
         &self.split_locs
     }
 
+    pub fn get_curr_arg(&self) -> usize {
+        self.curr_arg
+    }
+
     pub fn len(&self) -> usize {
         self.input_length
     }
@@ -131,7 +139,7 @@ impl<'a> InputBuffer<'a> {
         if i >= self.argument_hints.len() {
             true
         } else {
-            self.argument_hints[i].0 == target
+            self.argument_hints[i].0 != target
         }
     }
 
@@ -143,8 +151,13 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
-    fn arg_to_path(&self, s: &str) -> Option<path::PathBuf> {
+    // TODO: Clean all of this rubbish up
+    fn arg_to_path(&self, s: &str) -> Option<(path::PathBuf, Disregard, String)> {
         let fp = path::PathBuf::from(s);
+
+        let last = fp.iter().last().unwrap();
+        let disregard = s.len() - last.len();
+
         let fp = match fp.is_relative() {
             true => self.program_state.current_working_directory.join(fp),
             false => fp,
@@ -160,11 +173,11 @@ impl<'a> InputBuffer<'a> {
         }
 
         if cleaned_path.is_dir() {
-            return Some(cleaned_path);
+            return Some((cleaned_path, disregard, s[disregard..].to_string()));
         }
         if let Some(p) = cleaned_path.parent() {
             if p.is_dir() {
-                return Some(cleaned_path.parent().unwrap().to_path_buf());
+                return Some((cleaned_path.parent().unwrap().to_path_buf(), disregard, s[disregard..].to_string()));
             }
         }
         None
@@ -190,7 +203,7 @@ impl<'a> InputBuffer<'a> {
                 if self.out_of_range_or_different(i + 1, arg_flag.arg_type.clone()) {
                     let hint = match arg_flag.arg_type {
                         enums::ArgType::Executable => {
-                            hints::executables::make_executables_hint()
+                            hints::executables::make_executables_hint(arg)
                         }
                         enums::ArgType::Path => hints::filesystem::make_directory_hints(
                             self.arg_to_path(&arg),
@@ -202,6 +215,11 @@ impl<'a> InputBuffer<'a> {
                 } else if arg_flag.arg_type == enums::ArgType::Path {
                     hints::filesystem::update_directory_hints(
                         &self.arg_to_path(&arg),
+                        &mut self.argument_hints[i + 1].1,
+                    );
+                } else if arg_flag.arg_type == enums::ArgType::Executable {
+                    hints::executables::update_executables_hint(
+                        arg,
                         &mut self.argument_hints[i + 1].1,
                     );
                 }
@@ -251,7 +269,7 @@ impl<'a> InputBuffer<'a> {
                 if self.out_of_range_or_different(i, single_arg.arg_type.clone()) {
                     let hint = match single_arg.arg_type {
                         enums::ArgType::Executable => {
-                            hints::executables::make_executables_hint()
+                            hints::executables::make_executables_hint(arg)
                         }
                         enums::ArgType::Path => hints::filesystem::make_directory_hints(
                             self.arg_to_path(&arg),
@@ -260,6 +278,18 @@ impl<'a> InputBuffer<'a> {
                         enums::ArgType::Text => hints::Hint::default(),
                     };
                     self.push_or_replace(i, (single_arg.arg_type.clone(), hint));
+                } else {
+                    if single_arg.arg_type == enums::ArgType::Path {
+                        hints::filesystem::update_directory_hints(
+                            &self.arg_to_path(&arg),
+                            &mut self.argument_hints[i].1,
+                        );
+                    } else if single_arg.arg_type == enums::ArgType::Executable {
+                        hints::executables::update_executables_hint(
+                            arg,
+                            &mut self.argument_hints[i].1,
+                        );
+                    }
                 }
                 *arg_c += 1;
                 arg_skips.push(k);
@@ -270,11 +300,6 @@ impl<'a> InputBuffer<'a> {
     }
 
     fn update_arguments(&mut self) {
-        if self.out_of_range_or_different(0, enums::ArgType::Executable) {
-            let hint = hints::executables::make_executables_hint();
-            self.push_or_replace(0, (enums::ArgType::Executable, hint));
-        }
-
         let first_arg = {
             if self.num_args() == 0 {
                 self.current_command = None;
@@ -282,6 +307,16 @@ impl<'a> InputBuffer<'a> {
             }
             self.get_buffer_str(self.arg_locs(0))
         };
+
+        if self.out_of_range_or_different(0, enums::ArgType::Executable) {
+            let hint = hints::executables::make_executables_hint(&first_arg);
+            self.push_or_replace(0, (enums::ArgType::Executable, hint));
+        } else {
+            hints::executables::update_executables_hint(
+                &first_arg,
+                &mut self.argument_hints[0].1,
+            );
+        }
 
         if !first_arg.is_empty() {
             if self.current_command.is_some() {
@@ -372,11 +407,15 @@ impl<'a> InputBuffer<'a> {
 
         let mut in_quote = false;
         let mut last_split = 0;
+        self.curr_arg = 0;
         for (i, c) in self.buffer[..self.input_length].iter().enumerate() {
             if *c == '"' {
                 in_quote = !in_quote;
                 self.quote_locs.push(i);
             } else if *c == ' ' && !in_quote {
+                if self.main_cursor.position > last_split {
+                    self.curr_arg += 1;
+                }
                 self.split_locs.push(last_split);
                 self.split_locs.push(i);
                 last_split = i + 1;

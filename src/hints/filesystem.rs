@@ -18,27 +18,36 @@ fn get_files_in_directory(dir: &path::PathBuf) -> Vec<String> {
     }
 }
 
-pub fn make_directory_hints(dir: Option<path::PathBuf>, inlay: Option<&str>) -> super::Hint {
+pub fn make_directory_hints(dir: Option<(path::PathBuf, super::Disregard, String)>, inlay: Option<&str>) -> super::Hint {
     if dir.is_none() {
         return super::Hint::new(vec![], inlay);
     }
-    let dir = dir.unwrap();
+    let (dir, disregard, arg) = dir.unwrap();
     let available_files = get_files_in_directory(&dir);
     let mut hint = super::Hint::new(available_files, inlay);
     hint.set_set_using(dir);
+    hint.set_disregard(disregard);
+    hint.closest_match(&arg);
     hint
 }
 
-pub fn update_directory_hints(new_dir: &Option<path::PathBuf>, hints: &mut super::Hint) {
+pub fn update_directory_hints(new_dir: &Option<(path::PathBuf, super::Disregard, String)>, hints: &mut super::Hint) {
     match new_dir {
         None => {
             hints.set_selection(vec![]);
             hints.set_set_using(path::PathBuf::new());
+            hints.set_disregard(0);
         }
-        Some(new_dir) => {
+        Some((new_dir, disregard, arg)) => {
+            hints.set_disregard(*disregard);
             if !new_dir.exists() {
                 hints.set_selection(vec![]);
                 hints.set_set_using(path::PathBuf::new());
+            } else {
+                let available_files = get_files_in_directory(new_dir);
+                hints.set_selection(available_files);
+                hints.set_set_using(new_dir.clone());
+                hints.closest_match(&arg);
             }
         }
     }

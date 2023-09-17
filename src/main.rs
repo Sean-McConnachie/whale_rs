@@ -16,8 +16,11 @@ fn update_buffer(
             // command_run = true;
         }
         IEvent::Tab => {
-            // TODO: Tab
-            // buffer.tab()
+            let hints = buffer.get_argument_hints();
+            let curr = buffer.arg_locs(buffer.get_curr_arg());
+            let hint = &hints[buffer.get_curr_arg()].1;
+            let hint_arg = hint.last_closest_match().unwrap()[(curr.1 - curr.0 - hint.disregard())..].to_string();
+            buffer.insert_str_main_cursor(&hint_arg);
         }
         IEvent::Character(c) => {
             buffer.del_betw_curs();
@@ -66,7 +69,6 @@ fn update_buffer(
             let new_pos = buffer.jump(Side::Right, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true)
         }
-
         IEvent::Resize(size) => *term_size = size,
         _ => ()
         // IEvent::CtrlD => buffer.ctrl_d(),
@@ -105,7 +107,7 @@ fn runtime_loop(
             break;
         }
 
-        action_on_buffer = terminal_gui.action_on_buffer(input.clone());
+        action_on_buffer = terminal_gui.action_on_buffer(&buffer, input.clone());
         if action_on_buffer {
             update_buffer(input.clone(), &mut buffer, &mut term_size);
         }

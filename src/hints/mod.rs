@@ -4,12 +4,16 @@ use std::path;
 pub mod executables;
 pub mod filesystem;
 
+pub type Disregard = usize;
+
 #[derive(Debug)]
 pub struct Hint<'a> {
     /// Assumes selection is alphabetically sorted!
     selection: Vec<String>,
     inlay: Option<&'a str>,
     set_using: path::PathBuf,
+    disregard: Disregard,
+    last_closest_match: Option<String>,
 }
 
 impl<'a> Hint<'a> {
@@ -18,10 +22,13 @@ impl<'a> Hint<'a> {
             selection,
             inlay,
             set_using: path::PathBuf::new(),
+            disregard: 0,
+            last_closest_match: None,
         }
     }
 
     pub fn set_selection(&mut self, selection: Vec<String>) {
+        self.last_closest_match = None;
         self.selection = selection;
     }
 
@@ -37,20 +44,34 @@ impl<'a> Hint<'a> {
         self.inlay = inlay;
     }
 
-    pub fn closest_match(&'a self, s: &str) -> Option<&'a str> {
-        if s.is_empty() && self.inlay.is_some() {
-            Some(self.inlay.unwrap())
-        } else if s.is_empty() {
-            self.selection.first().map(|x| x.as_str())
-        } else {
-            match utils::first_item(&self.selection, s) {
-                Some(ind) => Some(&self.selection[ind]),
-                None => None,
-            }
-        }
+    pub fn set_disregard(&mut self, disregard: Disregard) {
+        self.disregard = disregard;
     }
 
-    pub fn filtered_items(&self, s: &'a str) -> impl Iterator<Item = &str> {
+    pub fn disregard(&self) -> Disregard {
+        self.disregard
+    }
+
+    pub fn last_closest_match(&self) -> Option<&String> {
+        self.last_closest_match.as_ref()
+    }
+
+    // TODO: Cleanup more rubbish
+    pub fn closest_match(&mut self, s: &str) {
+        let x = if s.is_empty() && self.inlay.is_some() {
+            Some(self.inlay.unwrap().to_string())
+        } else if s.is_empty() {
+            self.selection.first().map(|x| x.clone())
+        } else {
+            match utils::first_item(&self.selection, s) {
+                Some(ind) => Some(self.selection[ind].clone()),
+                None => None,
+            }
+        };
+        self.last_closest_match = x;
+    }
+
+    pub fn filtered_items(&self, s: &'a str) -> impl Iterator<Item=&str> {
         self.selection.iter().filter_map(move |v| {
             if v.starts_with(s) {
                 Some(v.as_str())
@@ -67,6 +88,8 @@ impl<'a> Default for Hint<'a> {
             selection: vec![],
             inlay: None,
             set_using: path::PathBuf::new(),
+            disregard: 0,
+            last_closest_match: None,
         }
     }
 }
