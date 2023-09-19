@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use crate::{config, config::command, enums, hints, state};
 use std::path;
 use crate::hints::Disregard;
@@ -107,6 +108,10 @@ impl<'a> InputBuffer<'a> {
         &self.argument_hints
     }
 
+    pub fn set_closest_match_on_hint(&mut self, arg: usize, s: String) {
+        self.argument_hints[arg].1.set_closest_match(s);
+    }
+
     pub fn get_splits(&self) -> &[BufferPosition] {
         &self.split_locs
     }
@@ -155,8 +160,12 @@ impl<'a> InputBuffer<'a> {
     fn arg_to_path(&self, s: &str) -> Option<(path::PathBuf, Disregard, String)> {
         let fp = path::PathBuf::from(s);
 
-        let last = fp.iter().last().unwrap();
-        let disregard = s.len() - last.len();
+        let last = if !s.is_empty() {
+            fp.iter().last().unwrap().len()
+        } else {
+            0
+        };
+        let disregard = s.len() - last;
 
         let fp = match fp.is_relative() {
             true => self.program_state.current_working_directory.join(fp),

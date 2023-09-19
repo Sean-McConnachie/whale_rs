@@ -1,7 +1,11 @@
 use crate::{state, utils, input, buffer, enums, ansi, hints};
 use crate::config::theme;
+use crate::gui::{ActionToExecute, ActionToTake};
 
 use super::GUITrait;
+
+// TODO: Fix inlay hints
+// TODO: Add ConfigCommand structs to executables for hints
 
 type IncreasedLength = u16;
 
@@ -30,6 +34,7 @@ pub struct TerminalGUI<'a> {
     current_line: u16,
 }
 
+
 impl<'a> TerminalGUI<'a>
 {
     pub fn init(program_state: &'a state::ProgramState) -> Self {
@@ -37,6 +42,19 @@ impl<'a> TerminalGUI<'a>
             program_state,
             additional_view: None,
             current_line: 0,
+        }
+    }
+
+    pub fn set_using(&mut self, view: Option<super::AdditionalViewNoData>) {
+        if let Some(view) = view {
+            self.additional_view = Some(super::AdditionalView::from_enum(view, self.program_state));
+        }
+    }
+
+    pub fn additional_view_no_data(&self) -> Option<super::AdditionalViewNoData> {
+        match &self.additional_view {
+            Some(view) => Some(view.additional_view_no_data()),
+            None => None,
         }
     }
 
@@ -161,18 +179,14 @@ impl<'a> TerminalGUI<'a>
         buf: &buffer::InputBuffer,
         event: input::InputEvent,
         term_size: super::TerminalXY,
-    ) {
+    ) -> ActionToExecute {
         ansi::erase_screen();
         ansi::move_to((0, self.current_line));
 
         let mut increased_length = self.output_path();
-
         increased_length += self.output_buffer(buf);
 
-        if let Some(view) = &mut self.additional_view {
-            view.write_output(event, term_size);
-        }
-
+        // TODO: This math can be simplified
         increased_length -= (buf.len() - buf.main_cur().position()) as IncreasedLength;
         let (cur_x, cur_y) = {
             // TODO: This shouldn't really equal 0 at any point
@@ -183,26 +197,44 @@ impl<'a> TerminalGUI<'a>
             }
         };
 
+        let rtn = if let Some(view) = &mut self.additional_view {
+            view.write_output(event, term_size, self.current_line + cur_y + 1, buf)
+        } else {
+            ActionToExecute::None
+        };
+
         ansi::move_to((cur_x as u16, self.current_line + cur_y as u16));
 
         ansi::reset();
         ansi::flush();
+
+        rtn
     }
 
-    pub fn action_on_buffer(&self, buf: &buffer::InputBuffer, event: input::InputEvent) -> super::PropagateAction {
+    pub fn action_on_buffer(&self, buf: &buffer::InputBuffer, event: input::InputEvent) -> ActionToTake {
         if event == input::InputEvent::Tab {
             let hints = buf.get_argument_hints();
             if !hints.is_empty() {
-                if hints[buf.get_curr_arg()].1.last_closest_match().is_some() {
-                    return true as super::PropagateAction;
+                // TODO: This is not a good way to do this
+                if buf.get_curr_arg() >= hints.len() {
+                    return ActionToTake::BlockBuffer;
                 }
+                return if hints[buf.get_curr_arg()].1.last_closest_match().is_some() {
+                    ActionToTake::WriteBuffer
+                } else {
+                    ActionToTake::BlockBuffer
+                };
             }
         }
         if let Some(view) = &self.additional_view {
             return view.action_on_buffer(event);
         }
-        true as super::PropagateAction
+        ActionToTake::WriteBuffer
     }
 
-    pub fn clear_output() -> () {}
+    pub fn clear_output(&mut self) {
+        if let Some(view) = &mut self.additional_view {
+            view.clear_output();
+        }
+    }
 }

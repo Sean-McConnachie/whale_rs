@@ -32,6 +32,10 @@ impl<'a> Hint<'a> {
         self.selection = selection;
     }
 
+    pub fn get_selection(&self) -> &[String] {
+        &self.selection
+    }
+
     pub fn set_using(&self) -> &path::PathBuf {
         &self.set_using
     }
@@ -69,6 +73,10 @@ impl<'a> Hint<'a> {
             }
         };
         self.last_closest_match = x;
+    }
+
+    pub fn set_closest_match(&mut self, s: String) {
+        self.last_closest_match = Some(s);
     }
 
     pub fn filtered_items(&self, s: &'a str) -> impl Iterator<Item=&str> {

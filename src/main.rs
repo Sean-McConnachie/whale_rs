@@ -1,11 +1,22 @@
 use whale_rs::input::InputEvent as IEvent;
 use whale_rs::buffer::Side;
+use whale_rs::gui;
 
-fn update_buffer(
+use whale_rs::gui::GUITrait;
+
+enum AdditionalViewAction {
+    None,
+    SetTo(gui::AdditionalViewNoData),
+    Unset,
+}
+
+fn update_buffer<'a>(
     input: whale_rs::input::InputEvent,
-    buffer: &mut whale_rs::buffer::InputBuffer,
+    buffer: &'a mut whale_rs::buffer::InputBuffer,
     term_size: &mut whale_rs::ansi::TerminalXY,
-) {
+    terminal_gui: &whale_rs::gui::terminal::TerminalGUI,
+) -> AdditionalViewAction {
+    let mut rtn = AdditionalViewAction::None;
     match input {
         IEvent::Esc => buffer.unset_secondary_cursor(),
         IEvent::Backspace => buffer.del_n(Side::Left, 1),
@@ -70,6 +81,19 @@ fn update_buffer(
             buffer.sec_cur_set(new_pos, true)
         }
         IEvent::Resize(size) => *term_size = size,
+
+        IEvent::CtrlD => {
+            let view = terminal_gui.additional_view_no_data();
+            if let Some(active_view) = view {
+                if active_view == gui::AdditionalViewNoData::Table {
+                    rtn = AdditionalViewAction::Unset;
+                } else {
+                    rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Table);
+                }
+            } else {
+                rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Table);
+            }
+        }
         _ => ()
         // IEvent::CtrlD => buffer.ctrl_d(),
         // IEvent::CtrlS => buffer.ctrl_s(),
@@ -85,19 +109,31 @@ fn update_buffer(
         // IEvent::Other(key) => buffer.other(key),
     }
     buffer.update();
+    rtn
+}
+
+fn execute_action(action: gui::ActionToExecute, buffer: &mut whale_rs::buffer::InputBuffer) {
+    match action {
+        gui::ActionToExecute::None => (),
+        gui::ActionToExecute::SetClosestMatch(s) => {
+            let curr_arg = buffer.get_curr_arg();
+            buffer.set_closest_match_on_hint(curr_arg, s);
+        }
+    }
 }
 
 fn runtime_loop(
     program_state: &whale_rs::state::ProgramState,
     mut buffer: whale_rs::buffer::InputBuffer,
-    mut terminal_gui: whale_rs::gui::terminal::TerminalGUI,
+    mut terminal_gui: gui::terminal::TerminalGUI,
 ) {
     whale_rs::ansi::erase_screen();
 
     let mut term_size = crossterm::terminal::size().unwrap();
 
     let mut input;
-    let mut action_on_buffer;
+    let mut action_to_take;
+    let mut action_to_execute;
     loop {
         input = match whale_rs::input::get_input() {
             Ok(inp) => inp,
@@ -107,12 +143,24 @@ fn runtime_loop(
             break;
         }
 
-        action_on_buffer = terminal_gui.action_on_buffer(&buffer, input.clone());
-        if action_on_buffer {
-            update_buffer(input.clone(), &mut buffer, &mut term_size);
+        action_to_take = terminal_gui.action_on_buffer(&buffer, input.clone());
+         if action_to_take != gui::ActionToTake::BlockBuffer {
+            let view = update_buffer(input.clone(), &mut buffer, &mut term_size, &terminal_gui);
+            match view {
+                AdditionalViewAction::None => (),
+                AdditionalViewAction::SetTo(view) => {
+                    terminal_gui.clear_output();
+                    terminal_gui.set_using(Some(view))
+                },
+                AdditionalViewAction::Unset => {
+                    terminal_gui.clear_output();
+                    terminal_gui.set_using(None)
+                },
+            }
         }
 
-        terminal_gui.write_output(&buffer, input, term_size);
+        action_to_execute = terminal_gui.write_output(&buffer, input, term_size);
+        if action_to_execute != gui::ActionToExecute::None {}
     }
 }
 
@@ -128,7 +176,7 @@ fn main() {
         whale_rs::state::ProgramState::init(config, current_working_directory)
     };
     let buffer = whale_rs::buffer::InputBuffer::init(&program_state);
-    let terminal_gui = whale_rs::gui::terminal::TerminalGUI::init(&program_state);
+    let terminal_gui = gui::terminal::TerminalGUI::init(&program_state);
 
     crossterm::terminal::enable_raw_mode().unwrap();
     runtime_loop(&program_state, buffer, terminal_gui);
