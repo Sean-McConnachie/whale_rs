@@ -2,7 +2,7 @@ use whale_rs::input::InputEvent as IEvent;
 use whale_rs::buffer::Side;
 use whale_rs::gui;
 
-use whale_rs::gui::GUITrait;
+use whale_rs::gui::{ActionToExecute, GUITrait};
 
 enum AdditionalViewAction {
     None,
@@ -160,7 +160,13 @@ fn runtime_loop(
         }
 
         action_to_execute = terminal_gui.write_output(&buffer, input, term_size);
-        if action_to_execute != gui::ActionToExecute::None {}
+        match action_to_execute {
+            ActionToExecute::None => (),
+            ActionToExecute::SetClosestMatch(s) => {
+                // TODO
+                // buffer.set_closest_match_on_hint(buffer.get_curr_arg(), s);
+            },
+        }
     }
 }
 

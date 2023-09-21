@@ -49,8 +49,11 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
         ansi::move_to((0, write_from_line));
         ansi::erase_line();
 
-        let curr_arg = buf.get_curr_arg();
-        let arg = if buf.num_args() > 0 {
+        let mut curr_arg = buf.get_curr_arg();
+        if curr_arg == buf.num_args() {
+            curr_arg -= 1;
+        }
+        let arg = if curr_arg < buf.num_args() {
             buf.get_buffer_str(buf.arg_locs(curr_arg))
         } else {
             String::new()
@@ -197,6 +200,8 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
             total_slots
         };
 
+        let mut rtn = ActionToExecute::None;
+
         for (_i, item) in (0..upper)
             .map(|x| {
                 let i = ((x + (self.table_scroll * grid_slots.0 as usize))
@@ -216,6 +221,7 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
                 && row == self.cursor_pos.1 && col == self.cursor_pos.0 {
                 cursor_drawn = HighlightDrawn::During;
                 style = &self.program_state.config.theme.console_secondary.highlighted;
+                rtn = ActionToExecute::SetClosestMatch(item.to_string());
             } else if cursor_drawn == HighlightDrawn::During {
                 cursor_drawn = HighlightDrawn::After;
                 style = &self.program_state.config.theme.console_secondary.normal;
@@ -237,7 +243,7 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
             col += 1;
         }
 
-        ActionToExecute::None
+        rtn
     }
 
     fn action_on_buffer(&self, event: InputEvent) -> ActionToTake {
