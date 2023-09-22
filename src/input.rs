@@ -37,6 +37,8 @@ pub enum InputEvent {
 
     Resize((u16, u16)),
 
+    Dummy,
+
     Other(Event),
 }
 

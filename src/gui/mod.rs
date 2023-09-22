@@ -11,19 +11,36 @@ pub mod terminal;
 #[derive(Debug, PartialEq)]
 pub enum ActionToTake {
     BlockBuffer,
-    WriteBuffer,
+    WriteBuffer(ActionType),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ActionType {
+    Standard,
+    Other(ActionToExecute)
 }
 
 #[derive(Debug, PartialEq)]
 pub enum ActionToExecute {
-    None,
     SetClosestMatch(String),
 }
 
 pub trait GUITrait<'a> {
     fn init(program_state: &'a state::ProgramState) -> Self;
-    fn write_output(&mut self, event: InputEvent, term_size: TerminalXY, write_from_line: u16, buf: &buffer::InputBuffer) -> ActionToExecute;
-    fn action_on_buffer(&self, event: InputEvent) -> ActionToTake;
+    fn action_before_write(
+        &mut self,
+        event: InputEvent,
+        buffer: &buffer::InputBuffer,
+        term_size: TerminalXY,
+        write_from_line: u16
+    ) -> ActionToTake;
+    fn write_output(
+        &mut self,
+        event: InputEvent,
+        term_size: TerminalXY,
+        write_from_line: u16,
+        buf: &buffer::InputBuffer
+    );
     fn clear_output(&mut self) -> ();
 }
 
@@ -60,15 +77,15 @@ impl<'a> GUITrait<'a> for AdditionalView<'a> {
         panic!("Cannot init AdditionalView through enum")
     }
 
-    fn write_output(&mut self, event: InputEvent, term_size: TerminalXY, write_from_line: u16, buf: &buffer::InputBuffer) -> ActionToExecute {
+    fn write_output(&mut self, event: InputEvent, term_size: TerminalXY, write_from_line: u16, buf: &buffer::InputBuffer) {
         match self {
             Self::Table(table) => table.write_output(event, term_size, write_from_line, buf),
         }
     }
 
-    fn action_on_buffer(&self, event: InputEvent) -> ActionToTake {
+    fn action_before_write(&mut self, event: InputEvent, buffer: &buffer::InputBuffer, term_size: TerminalXY, write_from_line: u16) -> ActionToTake {
         match self {
-            Self::Table(table) => table.action_on_buffer(event)
+            Self::Table(table) => table.action_before_write(event, buffer, term_size, write_from_line)
         }
     }
 

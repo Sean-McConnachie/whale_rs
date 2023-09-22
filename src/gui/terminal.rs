@@ -1,13 +1,14 @@
 use crate::{state, utils, input, buffer, enums, ansi, hints};
+use crate::ansi::TerminalXY;
 use crate::config::theme;
-use crate::gui::{ActionToExecute, ActionToTake};
+use crate::gui::{ActionToExecute, ActionToTake, ActionType};
 
 use super::GUITrait;
 
 // TODO: Fix inlay hints
 // TODO: Add ConfigCommand structs to executables for hints
 
-type IncreasedLength = u16;
+type CursorPos = (u16, u16);
 
 #[derive(Debug, PartialEq)]
 enum HighlightState {
@@ -32,6 +33,8 @@ pub struct TerminalGUI<'a> {
     additional_view: Option<super::AdditionalView<'a>>,
 
     current_line: u16,
+
+    short_cwd: String,
 }
 
 
@@ -39,6 +42,7 @@ impl<'a> TerminalGUI<'a>
 {
     pub fn init(program_state: &'a state::ProgramState) -> Self {
         Self {
+            short_cwd: String::new(),
             program_state,
             additional_view: None,
             current_line: 0,
@@ -58,15 +62,14 @@ impl<'a> TerminalGUI<'a>
         }
     }
 
-    pub fn output_path(&self) -> IncreasedLength {
-        let short_cwd = utils::short_path(&self.program_state.current_working_directory);
+    /// short_cwd is updated by calculate_increased_length
+    pub fn output_path(&self) {
         let theme = &self.program_state.config.theme;
-        super::output_str(&theme.console_main.normal, &short_cwd);
-        short_cwd.len() as IncreasedLength
+        super::output_str(&theme.console_main.normal, &self.short_cwd);
     }
 
-    fn output_buffer(&self, buf: &buffer::InputBuffer) -> IncreasedLength {
-        if buf.len() == 0 { return 0; }
+    fn output_buffer(&self, buf: &buffer::InputBuffer) {
+        if buf.len() == 0 { return }
 
         fn handle_normal_arg(style: &theme::StylePair, arg: &str, highlighted: bool) {
             match highlighted {
@@ -171,47 +174,15 @@ impl<'a> TerminalGUI<'a>
                 }
             }
         }
-        increased_length + buf.len() as IncreasedLength
     }
 
-    pub fn write_output(
+    pub fn action_before_write(
         &mut self,
         buf: &buffer::InputBuffer,
         event: input::InputEvent,
-        term_size: super::TerminalXY,
-    ) -> ActionToExecute {
-        ansi::erase_screen();
-        ansi::move_to((0, self.current_line));
-
-        let mut increased_length = self.output_path();
-        increased_length += self.output_buffer(buf);
-
-        // TODO: This math can be simplified
-        increased_length -= (buf.len() - buf.main_cur().position()) as IncreasedLength;
-        let (cur_x, cur_y) = {
-            // TODO: This shouldn't really equal 0 at any point
-            if term_size.0 == 0 {
-                (0, 0)
-            } else {
-                (increased_length % term_size.0, increased_length / term_size.0)
-            }
-        };
-
-        let rtn = if let Some(view) = &mut self.additional_view {
-            view.write_output(event, term_size, self.current_line + cur_y + 1, buf)
-        } else {
-            ActionToExecute::None
-        };
-
-        ansi::move_to((cur_x as u16, self.current_line + cur_y as u16));
-
-        ansi::reset();
-        ansi::flush();
-
-        rtn
-    }
-
-    pub fn action_on_buffer(&self, buf: &buffer::InputBuffer, event: input::InputEvent) -> ActionToTake {
+        term_size: TerminalXY,
+        write_from_line: u16,
+    ) -> ActionToTake {
         if event == input::InputEvent::Tab {
             let hints = buf.get_argument_hints();
             if !hints.is_empty() {
@@ -220,16 +191,72 @@ impl<'a> TerminalGUI<'a>
                     return ActionToTake::BlockBuffer;
                 }
                 return if hints[buf.get_curr_arg()].1.last_closest_match().is_some() {
-                    ActionToTake::WriteBuffer
+                    ActionToTake::WriteBuffer(ActionType::Standard)
                 } else {
                     ActionToTake::BlockBuffer
                 };
             }
         }
-        if let Some(view) = &self.additional_view {
-            return view.action_on_buffer(event);
+        if let Some(view) = &mut self.additional_view {
+            return view.action_before_write(event, &buf, term_size, write_from_line);
         }
-        ActionToTake::WriteBuffer
+        ActionToTake::WriteBuffer(ActionType::Standard)
+    }
+
+    pub fn write_output(
+        &mut self,
+        buf: &buffer::InputBuffer,
+        event: input::InputEvent,
+        term_size: TerminalXY,
+        cursor_position: CursorPos,
+    ) {
+        ansi::erase_screen();
+        ansi::move_to((0, self.current_line));
+
+        self.output_path();
+        self.output_buffer(buf);
+
+        // // TODO: This math can be simplified
+        // increased_length -= (buf.len() - buf.main_cur().position()) as IncreasedLength;
+        // let (cur_x, cur_y) = {
+        //     // TODO: This shouldn't really equal 0 at any point
+        //     if term_size.0 == 0 {
+        //         (0, 0)
+        //     } else {
+        //         (increased_length % term_size.0, increased_length / term_size.0)
+        //     }
+        // };
+
+        if let Some(view) = &mut self.additional_view {
+            view.write_output(event, term_size, self.current_line + cursor_position.1 + 1, buf)
+        } else {};
+
+        ansi::move_to((cursor_position.0, self.current_line + cursor_position.1));
+
+        ansi::reset();
+        ansi::flush();
+    }
+
+    pub fn calculate_increased_length(
+        &mut self,
+        buffer: &buffer::InputBuffer,
+        term_size: TerminalXY,
+    ) -> (CursorPos, TerminalXY) {
+        fn pos_to_xy(pos: u16, term_size: TerminalXY) -> (u16, u16) {
+            // TODO: This shouldn't really equal 0 at any point
+            if term_size.0 == 0 {
+                (0, 0)
+            } else {
+                (pos % term_size.0, pos / term_size.0)
+            }
+        }
+
+        self.short_cwd = utils::short_path(&self.program_state.current_working_directory);
+
+        let upto_end = buffer.len() + self.short_cwd.len();
+        let upto_cursor = buffer.main_cur().position() + self.short_cwd.len();
+
+        (pos_to_xy(upto_cursor as u16, term_size), pos_to_xy(upto_end as u16, term_size))
     }
 
     pub fn clear_output(&mut self) {

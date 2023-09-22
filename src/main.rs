@@ -1,8 +1,8 @@
-use whale_rs::input::InputEvent as IEvent;
+use whale_rs::input::{InputEvent as IEvent, InputEvent};
 use whale_rs::buffer::Side;
 use whale_rs::gui;
 
-use whale_rs::gui::{ActionToExecute, GUITrait};
+use whale_rs::gui::GUITrait;
 
 enum AdditionalViewAction {
     None,
@@ -114,7 +114,6 @@ fn update_buffer<'a>(
 
 fn execute_action(action: gui::ActionToExecute, buffer: &mut whale_rs::buffer::InputBuffer) {
     match action {
-        gui::ActionToExecute::None => (),
         gui::ActionToExecute::SetClosestMatch(s) => {
             let curr_arg = buffer.get_curr_arg();
             buffer.set_closest_match_on_hint(curr_arg, s);
@@ -129,44 +128,66 @@ fn runtime_loop(
 ) {
     whale_rs::ansi::erase_screen();
 
-    let mut term_size = crossterm::terminal::size().unwrap();
+    let mut term_size = (1, 1);
 
+    let mut iter: u128 = 0;
+    let mut positions;
     let mut input;
     let mut action_to_take;
-    let mut action_to_execute;
     loop {
+        if iter == 1 {
+            term_size = crossterm::terminal::size().unwrap();
+        }
+
+        // term_size = (65, 7);
+
         input = match whale_rs::input::get_input() {
             Ok(inp) => inp,
             Err(_) => continue
         };
-        if input == whale_rs::input::InputEvent::CtrlC {
+        if input == InputEvent::CtrlC {
             break;
         }
 
-        action_to_take = terminal_gui.action_on_buffer(&buffer, input.clone());
-         if action_to_take != gui::ActionToTake::BlockBuffer {
-            let view = update_buffer(input.clone(), &mut buffer, &mut term_size, &terminal_gui);
-            match view {
-                AdditionalViewAction::None => (),
-                AdditionalViewAction::SetTo(view) => {
-                    terminal_gui.clear_output();
-                    terminal_gui.set_using(Some(view))
-                },
-                AdditionalViewAction::Unset => {
-                    terminal_gui.clear_output();
-                    terminal_gui.set_using(None)
-                },
+        positions = terminal_gui.calculate_increased_length(&buffer, term_size);
+
+        action_to_take = terminal_gui.action_before_write(
+            &buffer,
+            input.clone(),
+            term_size,
+            positions.1.1 + 1,
+        );
+
+        if let gui::ActionToTake::WriteBuffer(action) = action_to_take {
+            if let gui::ActionType::Other(other) = action {
+                execute_action(other, &mut buffer);
+            } else {
+                let view = update_buffer(input.clone(), &mut buffer, &mut term_size, &terminal_gui);
+                match view {
+                    AdditionalViewAction::None => (),
+                    AdditionalViewAction::SetTo(view) => {
+                        terminal_gui.clear_output();
+                        terminal_gui.set_using(Some(view))
+                    }
+                    AdditionalViewAction::Unset => {
+                        terminal_gui.clear_output();
+                        terminal_gui.set_using(None)
+                    }
+                }
+                action_to_take = terminal_gui.action_before_write(
+                    &buffer,
+                    InputEvent::Dummy,
+                    term_size,
+                    positions.1.1 + 1,
+                );
             }
         }
 
-        action_to_execute = terminal_gui.write_output(&buffer, input, term_size);
-        match action_to_execute {
-            ActionToExecute::None => (),
-            ActionToExecute::SetClosestMatch(s) => {
-                // TODO
-                // buffer.set_closest_match_on_hint(buffer.get_curr_arg(), s);
-            },
-        }
+        positions = terminal_gui.calculate_increased_length(&buffer, term_size);
+
+        terminal_gui.write_output(&buffer, input, term_size, positions.0);
+
+        iter += 1;
     }
 }
 

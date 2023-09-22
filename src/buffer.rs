@@ -156,6 +156,25 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
+    // TODO: Fix indexing to prevent these checks
+    pub fn get_curr_hint_safe(&self) -> Option<(String, &hints::Hint)> {
+        if self.num_args() != 0 {
+            let mut curr_arg = self.get_curr_arg();
+            if curr_arg == self.num_args() {
+                curr_arg -= 1;
+            }
+            let arg = if curr_arg < self.num_args() {
+                self.get_buffer_str(self.arg_locs(curr_arg))
+            } else {
+                String::new()
+            };
+            let (_arg_type, hint) = &self.get_argument_hints()[curr_arg];
+            Some((arg, hint))
+        } else {
+            None
+        }
+    }
+
     // TODO: Clean all of this rubbish up
     fn arg_to_path(&self, s: &str) -> Option<(path::PathBuf, Disregard, String)> {
         let fp = path::PathBuf::from(s);
