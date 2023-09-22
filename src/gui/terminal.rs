@@ -8,7 +8,8 @@ use super::GUITrait;
 // TODO: Fix inlay hints
 // TODO: Add ConfigCommand structs to executables for hints
 
-type CursorPos = (u16, u16);
+pub type CursorPos = (u16, u16);
+pub type ArgPos = (u16, u16);
 
 #[derive(Debug, PartialEq)]
 enum HighlightState {
@@ -52,6 +53,8 @@ impl<'a> TerminalGUI<'a>
     pub fn set_using(&mut self, view: Option<super::AdditionalViewNoData>) {
         if let Some(view) = view {
             self.additional_view = Some(super::AdditionalView::from_enum(view, self.program_state));
+        } else {
+            self.additional_view = None;
         }
     }
 
@@ -69,7 +72,7 @@ impl<'a> TerminalGUI<'a>
     }
 
     fn output_buffer(&self, buf: &buffer::InputBuffer) {
-        if buf.len() == 0 { return }
+        if buf.len() == 0 { return; }
 
         fn handle_normal_arg(style: &theme::StylePair, arg: &str, highlighted: bool) {
             match highlighted {
@@ -182,6 +185,8 @@ impl<'a> TerminalGUI<'a>
         event: input::InputEvent,
         term_size: TerminalXY,
         write_from_line: u16,
+        cursor_pos: CursorPos,
+        arg_pos: CursorPos,
     ) -> ActionToTake {
         if event == input::InputEvent::Tab {
             let hints = buf.get_argument_hints();
@@ -198,7 +203,7 @@ impl<'a> TerminalGUI<'a>
             }
         }
         if let Some(view) = &mut self.additional_view {
-            return view.action_before_write(event, &buf, term_size, write_from_line);
+            return view.action_before_write(event, &buf, term_size, write_from_line, cursor_pos, arg_pos);
         }
         ActionToTake::WriteBuffer(ActionType::Standard)
     }
@@ -216,17 +221,6 @@ impl<'a> TerminalGUI<'a>
         self.output_path();
         self.output_buffer(buf);
 
-        // // TODO: This math can be simplified
-        // increased_length -= (buf.len() - buf.main_cur().position()) as IncreasedLength;
-        // let (cur_x, cur_y) = {
-        //     // TODO: This shouldn't really equal 0 at any point
-        //     if term_size.0 == 0 {
-        //         (0, 0)
-        //     } else {
-        //         (increased_length % term_size.0, increased_length / term_size.0)
-        //     }
-        // };
-
         if let Some(view) = &mut self.additional_view {
             view.write_output(event, term_size, self.current_line + cursor_position.1 + 1, buf)
         } else {};
@@ -241,7 +235,7 @@ impl<'a> TerminalGUI<'a>
         &mut self,
         buffer: &buffer::InputBuffer,
         term_size: TerminalXY,
-    ) -> (CursorPos, TerminalXY) {
+    ) -> (CursorPos, TerminalXY, ArgPos) {
         fn pos_to_xy(pos: u16, term_size: TerminalXY) -> (u16, u16) {
             // TODO: This shouldn't really equal 0 at any point
             if term_size.0 == 0 {
@@ -255,13 +249,28 @@ impl<'a> TerminalGUI<'a>
 
         let upto_end = buffer.len() + self.short_cwd.len();
         let upto_cursor = buffer.main_cur().position() + self.short_cwd.len();
+        let upto_curr_arg = {
+            if buffer.num_args() == 0 {
+                0 + self.short_cwd.len()
+            } else {
+                let mut ind = buffer.get_curr_arg() * 2;
+                if ind >= buffer.get_splits().len() {
+                    ind -= 2;
+                }
+                buffer.get_splits()[ind] + self.short_cwd.len()
+            }
+        };
 
-        (pos_to_xy(upto_cursor as u16, term_size), pos_to_xy(upto_end as u16, term_size))
+        (
+            pos_to_xy(upto_cursor as u16, term_size),
+            pos_to_xy(upto_end as u16, term_size),
+            pos_to_xy(upto_curr_arg as u16, term_size)
+        )
     }
 
-    pub fn clear_output(&mut self) {
+    pub fn clear_output(&mut self, write_from_line: u16) {
         if let Some(view) = &mut self.additional_view {
-            view.clear_output();
+            view.clear_output(write_from_line);
         }
     }
 }

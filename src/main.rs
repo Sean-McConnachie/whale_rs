@@ -94,6 +94,20 @@ fn update_buffer<'a>(
                 rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Table);
             }
         }
+
+        IEvent::CtrlT => {
+            let view = terminal_gui.additional_view_no_data();
+            if let Some(active_view) = view {
+                if active_view == gui::AdditionalViewNoData::Dropdown {
+                    rtn = AdditionalViewAction::Unset;
+                } else {
+                    rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Dropdown);
+                }
+            } else {
+                rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Dropdown);
+            }
+        }
+
         _ => ()
         // IEvent::CtrlD => buffer.ctrl_d(),
         // IEvent::CtrlS => buffer.ctrl_s(),
@@ -132,14 +146,13 @@ fn runtime_loop(
 
     let mut iter: u128 = 0;
     let mut positions;
+    let mut write_from_line;
     let mut input;
     let mut action_to_take;
     loop {
         if iter == 1 {
             term_size = crossterm::terminal::size().unwrap();
         }
-
-        // term_size = (65, 7);
 
         input = match whale_rs::input::get_input() {
             Ok(inp) => inp,
@@ -150,12 +163,15 @@ fn runtime_loop(
         }
 
         positions = terminal_gui.calculate_increased_length(&buffer, term_size);
+        write_from_line = positions.1.1 + 1;
 
         action_to_take = terminal_gui.action_before_write(
             &buffer,
             input.clone(),
             term_size,
-            positions.1.1 + 1,
+            write_from_line,
+            positions.0,
+            positions.2
         );
 
         if let gui::ActionToTake::WriteBuffer(action) = action_to_take {
@@ -166,11 +182,11 @@ fn runtime_loop(
                 match view {
                     AdditionalViewAction::None => (),
                     AdditionalViewAction::SetTo(view) => {
-                        terminal_gui.clear_output();
+                        terminal_gui.clear_output(write_from_line);
                         terminal_gui.set_using(Some(view))
                     }
                     AdditionalViewAction::Unset => {
-                        terminal_gui.clear_output();
+                        terminal_gui.clear_output(write_from_line);
                         terminal_gui.set_using(None)
                     }
                 }
@@ -178,7 +194,9 @@ fn runtime_loop(
                     &buffer,
                     InputEvent::Dummy,
                     term_size,
-                    positions.1.1 + 1,
+                    write_from_line,
+                    positions.0,
+                    positions.2,
                 );
             }
         }

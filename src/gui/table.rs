@@ -1,6 +1,7 @@
 use crate::{ansi, buffer, hints, state};
 use crate::ansi::TerminalXY;
-use crate::gui::{ActionToExecute, ActionToTake, ActionType};
+use crate::gui::{ActionToExecute, ActionToTake, ActionType, AdditionalViewDraw};
+use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;
 
 #[derive(PartialEq)]
@@ -112,6 +113,114 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
         }
     }
 
+    fn action_before_write(
+        &mut self,
+        event: InputEvent,
+        buffer: &buffer::InputBuffer,
+        term_size: TerminalXY,
+        write_from_line: u16,
+        cursor_pos: CursorPos,
+        arg_pos: CursorPos,
+    ) -> ActionToTake {
+        // Basic dimensions
+        let write_table_from_line = (write_from_line + 1).min(term_size.1);
+        self.grid_slots = (
+            term_size.0 / self.program_state.config.gui.table.max_field_len,
+            term_size.1 - write_table_from_line
+        ) as TerminalXY;
+        let grid_slots = self.grid_slots;
+        let grid_num_slots = (grid_slots.0 * grid_slots.1) as usize;
+
+        fn ceil_div(a: usize, b: usize) -> usize {
+            (a + b - 1) / b
+        }
+        fn mod_sub_1(a: usize, n: usize) -> usize {
+            let r = a % n;
+            if r == 0 { n - 1 } else { r - 1 }
+        }
+
+        // Find relevant hints
+        // TODO: This is a bit of a mess
+        let mut disregard = 0;
+        let mut arg = String::new();
+        let mut hint: &[String] = &[];
+        if let Some(h) = buffer.get_curr_hint_safe() {
+            arg = h.0;
+            hint = h.1.get_selection();
+            disregard = h.1.disregard();
+        };
+
+        let mut hint_indexes = Vec::with_capacity(grid_num_slots);
+        for (i, s) in hint.iter().enumerate() {
+            if s.starts_with(&arg[disregard..]) {
+                hint_indexes.push(i);
+            }
+        }
+
+        let num_hints = hint_indexes.len();
+
+        // Reset table if hints have changed
+        if self.prev_len != num_hints {
+            self.prev_len = num_hints;
+            self.cursor_pos = Self::CURSOR_HOME;
+            self.table_scroll = Self::TABLE_SCROLL;
+        }
+
+        // This is the last position in the grid given the current number of hints and scroll
+        let cur_pos_last = (
+            (mod_sub_1(num_hints, grid_slots.0 as usize) as u16),
+            (ceil_div(num_hints, grid_slots.0 as usize) as u16)
+                .min(grid_slots.1).saturating_sub(1)
+        );
+
+        let scroll_max = ceil_div(num_hints, grid_slots.0 as usize).saturating_sub(grid_slots.1 as usize);
+        let mut scroll_is_max = self.table_scroll == scroll_max;
+
+        // Move cursor
+        let should_set_closest = match event {
+            InputEvent::ArrowUp => self.arrow_up(cur_pos_last, scroll_max),
+            InputEvent::ArrowDown => self.arrow_down(cur_pos_last, scroll_max, scroll_is_max),
+            InputEvent::ArrowLeft => self.arrow_left(cur_pos_last, scroll_max, grid_slots),
+            InputEvent::ArrowRight => self.arrow_right(cur_pos_last, scroll_max, grid_slots),
+            _ => false
+        };
+
+        scroll_is_max = self.table_scroll == scroll_max;
+
+        // Do some work for the next write_output stage
+        self.hints_iterator = {
+            let upper = match (scroll_is_max, num_hints < grid_num_slots) {
+                (false, false) => grid_num_slots,
+                (false, true) => num_hints,
+                (true, false) => {
+                    let items_mod_slots = num_hints % grid_slots.0 as usize;
+                    grid_num_slots - (grid_slots.0 as usize - items_mod_slots)
+                }
+                (true, true) => num_hints,
+            };
+
+            (0..upper)
+                .map(|x| {
+                    let i = ((x + (self.table_scroll * grid_slots.0 as usize))
+                        .rem_euclid(num_hints));
+                    hint_indexes[i]
+                }).collect()
+        };
+        let ind = (self.cursor_pos.1 as usize + self.table_scroll)
+            * grid_slots.0 as usize + self.cursor_pos.0 as usize;
+        self.preceding_cur = ind;
+        self.succeeding_cur = (num_hints - ind).saturating_sub(1);
+
+        // Return action
+        if should_set_closest {
+            let hint_ind = hint_indexes[ind];
+            let hint = hint[hint_ind].clone();
+            ActionToTake::WriteBuffer(ActionType::Other(ActionToExecute::SetClosestMatch(hint)))
+        } else {
+            ActionToTake::WriteBuffer(ActionType::Standard)
+        }
+    }
+
     fn write_output(
         &mut self,
         event: InputEvent,
@@ -193,108 +302,8 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
         }
     }
 
-    fn action_before_write(
-        &mut self,
-        event: InputEvent,
-        buffer: &buffer::InputBuffer,
-        term_size: TerminalXY,
-        write_from_line: u16,
-    ) -> ActionToTake {
-        // Basic dimensions
-        let write_table_from_line = (write_from_line + 1).min(term_size.1);
-        self.grid_slots = (
-            term_size.0 / self.program_state.config.gui.table.max_field_len,
-            term_size.1 - write_table_from_line
-        ) as TerminalXY;
-        let grid_slots = self.grid_slots;
-        let grid_num_slots = (grid_slots.0 * grid_slots.1) as usize;
-
-        fn ceil_div(a: usize, b: usize) -> usize {
-            (a + b - 1) / b
-        }
-        fn mod_sub_1(a: usize, n: usize) -> usize {
-            let r = a % n;
-            if r == 0 { n - 1 } else { r - 1 }
-        }
-
-        // Find relevant hints
-        let mut arg = String::new();
-        let mut hint: &[String] = &[];
-        if let Some(h) = buffer.get_curr_hint_safe() {
-            arg = h.0;
-            hint = h.1.get_selection();
-        };
-
-        let mut hint_indexes = Vec::with_capacity(grid_num_slots);
-        for (i, s) in hint.iter().enumerate() {
-            if s.starts_with(&arg) {
-                hint_indexes.push(i);
-            }
-        }
-
-        let num_hints = hint_indexes.len();
-
-        // Reset table if hints have changed
-        if self.prev_len != num_hints {
-            self.prev_len = num_hints;
-            self.cursor_pos = Self::CURSOR_HOME;
-            self.table_scroll = Self::TABLE_SCROLL;
-        }
-
-        // This is the last position in the grid given the current number of hints and scroll
-        let cur_pos_last = (
-            (mod_sub_1(num_hints, grid_slots.0 as usize) as u16),
-            (ceil_div(num_hints, grid_slots.0 as usize) as u16)
-                .min(grid_slots.1).saturating_sub(1)
-        );
-
-        let scroll_max = (ceil_div(num_hints, grid_slots.0 as usize) as i64 - grid_slots.1 as i64).max(0) as usize;
-        let scroll_is_max = self.table_scroll == scroll_max;
-
-        // Move cursor
-        let should_set_closest = match event {
-            InputEvent::ArrowUp => self.arrow_up(cur_pos_last, scroll_max),
-            InputEvent::ArrowDown => self.arrow_down(cur_pos_last, scroll_max, scroll_is_max),
-            InputEvent::ArrowLeft => self.arrow_left(cur_pos_last, scroll_max, grid_slots),
-            InputEvent::ArrowRight => self.arrow_right(cur_pos_last, scroll_max, grid_slots),
-            _ => false
-        };
-
-        let scroll_is_max = self.table_scroll == scroll_max;
-
-        // Do some work for the next write_output stage
-        self.hints_iterator = {
-            let upper = match (scroll_is_max, num_hints < grid_num_slots) {
-                (false, false) => grid_num_slots,
-                (false, true) => num_hints,
-                (true, false) => {
-                    let items_mod_slots = num_hints % grid_slots.0 as usize;
-                    grid_num_slots - (grid_slots.0 as usize - items_mod_slots)
-                },
-                (true, true) => num_hints,
-            };
-
-            (0..upper)
-                .map(|x| {
-                    let i = ((x + (self.table_scroll * grid_slots.0 as usize))
-                        .rem_euclid(num_hints));
-                    hint_indexes[i]
-                }).collect()
-        };
-        let ind = (self.cursor_pos.1 as usize + self.table_scroll)
-            * grid_slots.0 as usize + self.cursor_pos.0 as usize;
-        self.preceding_cur = ind;
-        self.succeeding_cur = (num_hints - ind).saturating_sub(1);
-
-        // Return action
-        if should_set_closest {
-            let hint_ind = hint_indexes[ind];
-            let hint = hint[hint_ind].clone();
-            ActionToTake::WriteBuffer(ActionType::Other(ActionToExecute::SetClosestMatch(hint)))
-        } else {
-            ActionToTake::WriteBuffer(ActionType::Standard)
-        }
+    fn clear_output(&mut self, write_from_line: u16) {
+        ansi::move_to((0, write_from_line));
+        ansi::erase_screen_from_cursor();
     }
-
-    fn clear_output(&mut self) -> () {}
 }
