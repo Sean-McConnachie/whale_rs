@@ -162,7 +162,10 @@ impl<'a> TerminalGUI<'a>
                 }
                 HighlightState::AfterHighlight => {
                     // We do not show inline hints when highlighted
-                    if !hilt_active && cur_a >= start && cur_b <= stop {
+                    if !hilt_active
+                        && ((start == stop && cur_a >= start && cur_b <= stop)
+                        || (start != stop && cur_a >= start && cur_b < stop)) {
+                    // if !hilt_active && cur_a >= start && cur_b < stop {
                         handle_suggestion_arg(
                             &style,
                             &arg,

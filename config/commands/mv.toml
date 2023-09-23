@@ -4,10 +4,14 @@ flag_arg_pair = []
 
 [[single_arg]]
 arg_type = "Path"
-arg_hint = "src"
+arg_hint = "sauce"
 arg_pos = 1
 
 [[single_arg]]
 arg_type = "Path"
-arg_hint = "dst"
+arg_hint = "destinatshun"
 arg_pos = 2
+
+[[flag]]
+name_from = "-f"
+name_to = "-cunt"

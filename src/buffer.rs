@@ -425,6 +425,10 @@ impl<'a> InputBuffer<'a> {
                 skip = Skip::Once;
                 continue 'outer;
             }
+
+            if self.out_of_range_or_different(i, enums::ArgType::Text) {
+                self.push_or_replace(i, (enums::ArgType::Text, hints::Hint::default()));
+            }
         }
     }
 
@@ -448,7 +452,7 @@ impl<'a> InputBuffer<'a> {
                 last_split = i + 1;
             }
         }
-        if last_split < self.input_length {
+        if last_split <= self.input_length {
             self.split_locs.push(last_split);
         }
         if self.split_locs.len() % 2 == 1 {
