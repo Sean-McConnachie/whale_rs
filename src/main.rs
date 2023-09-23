@@ -83,6 +83,19 @@ fn update_buffer<'a>(
         InputEvent::CtrlD => {
             let view = terminal_gui.additional_view_no_data();
             if let Some(active_view) = view {
+                if active_view == gui::AdditionalViewNoData::Explorer {
+                    rtn = AdditionalViewAction::Unset;
+                } else {
+                    rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Explorer);
+                }
+            } else {
+                rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Explorer);
+            }
+        }
+
+        InputEvent::CtrlD => {
+            let view = terminal_gui.additional_view_no_data();
+            if let Some(active_view) = view {
                 if active_view == gui::AdditionalViewNoData::Table {
                     rtn = AdditionalViewAction::Unset;
                 } else {

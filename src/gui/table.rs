@@ -1,15 +1,8 @@
 use crate::{ansi, buffer, state};
 use crate::ansi::TerminalXY;
-use crate::gui::{ActionToExecute, ActionToTake, ActionType};
+use crate::gui::{ActionToExecute, ActionToTake, ActionType, HighlightDrawn};
 use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;
-
-#[derive(PartialEq)]
-enum HighlightDrawn {
-    Before,
-    During,
-    After,
-}
 
 pub struct TableGUI<'a> {
     program_state: &'a state::ProgramState,

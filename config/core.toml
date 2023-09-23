@@ -1,2 +1,2 @@
 default_shell = "CommandPrompt"
-data_dir = "dataa"
+data_dir = "data"

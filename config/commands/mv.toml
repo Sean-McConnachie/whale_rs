@@ -11,7 +11,3 @@ arg_pos = 1
 arg_type = "Path"
 arg_hint = "destinatshun"
 arg_pos = 2
-
-[[flag]]
-name_from = "-f"
-name_to = "-cunt"
