@@ -1,3 +1,5 @@
+extern crate dotenv;
+
 pub mod command;
 pub mod core;
 pub mod gui;
@@ -29,12 +31,25 @@ impl Default for FullConfig {
 }
 
 pub fn read_or_create_all_configs() -> FullConfig {
-    let config_dir = std::path::PathBuf::from(std::env::var("CONFIG_DIR").unwrap_or("./config".to_string()));
+    let config_dir = {
+        dotenv::dotenv().ok();
+        let env_config_dir = std::env::var("CONFIG_DIR")
+            .unwrap_or("./config".to_string());
+        std::path::PathBuf::from(env_config_dir)
+    };
 
-    let cfg_core: core::ConfigCore = read_or_create_config(&config_dir.join("core.toml")).unwrap_or_default();
-    
+    if !config_dir.exists() {
+        std::fs::create_dir_all(&config_dir).unwrap();
+    }
+
+    let mut cfg_core: core::ConfigCore = read_or_create_config(&config_dir.join("core.toml")).unwrap_or_default();
+    cfg_core.config_dir = config_dir.clone();
+
+    if !cfg_core.data_dir.exists() {
+        std::fs::create_dir_all(&cfg_core.data_dir).unwrap();
+    }
+
     let cfg_history: history::ConfigHistory = read_or_create_config(&config_dir.join("history.toml")).unwrap_or_default();
-
 
     let mut cfg_theme: theme::ConfigTheme = read_or_create_config(&config_dir.join("theme.toml")).unwrap_or_default();
     cfg_theme.generate_escape_sequences();
@@ -69,7 +84,7 @@ pub fn read_or_create_config<
     let mut file = std::fs::File::open(path)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
-    Ok(toml::from_str(&contents)?)
+    Ok(toml::from_str(&contents).unwrap())
 }
 
 fn parse_path_buf<'de, D>(deserializer: D) -> Result<std::path::PathBuf, D::Error>

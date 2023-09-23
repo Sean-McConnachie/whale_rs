@@ -216,9 +216,6 @@ fn runtime_loop(
 fn main() {
     let program_state = {
         let config = config::read_or_create_all_configs();
-        if !config.core.data_dir.exists() {
-            std::fs::create_dir_all(&config.core.data_dir).unwrap();
-        }
 
         let current_working_directory = std::env::current_dir().unwrap();
 

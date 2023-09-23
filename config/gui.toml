@@ -1,2 +1,5 @@
-[[table]]
+[table]
 max_field_len = 20
+
+[dropdown]
+max_rows = 10

@@ -108,12 +108,12 @@ fn create_defaults(directory: &path::PathBuf) -> anyhow::Result<Vec<ConfigComman
         args: vec![
             SingleArg {
                 arg_type: ArgType::Path,
-                arg_hint: "".to_string(),
+                arg_hint: "src".to_string(),
                 arg_pos: 1,
             },
             SingleArg {
                 arg_type: ArgType::Path,
-                arg_hint: "".to_string(),
+                arg_hint: "dst".to_string(),
                 arg_pos: 2,
             },
         ],
