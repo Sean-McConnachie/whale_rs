@@ -12,7 +12,7 @@ const DELIMITER: char = '/';
 
 pub fn short_path(full_path: &path::PathBuf) -> String {
     let mut output = full_path.to_str().unwrap()[0..2].to_string();
-    output.push(' ');
+    output.push(DELIMITER);
     let dirs = full_path
         .iter()
         .map(|dir| dir.to_str().unwrap())

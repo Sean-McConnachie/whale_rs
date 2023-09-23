@@ -1,8 +1,6 @@
-use whale_rs::input::{InputEvent as IEvent, InputEvent};
+use whale_rs::input::{InputEvent};
 use whale_rs::buffer::Side;
-use whale_rs::gui;
-
-use whale_rs::gui::GUITrait;
+use whale_rs::{ansi, buffer, config, gui, input, state};
 
 enum AdditionalViewAction {
     None,
@@ -11,78 +9,78 @@ enum AdditionalViewAction {
 }
 
 fn update_buffer<'a>(
-    input: whale_rs::input::InputEvent,
-    buffer: &'a mut whale_rs::buffer::InputBuffer,
-    term_size: &mut whale_rs::ansi::TerminalXY,
-    terminal_gui: &whale_rs::gui::terminal::TerminalGUI,
+    input: InputEvent,
+    buffer: &'a mut buffer::InputBuffer,
+    term_size: &mut ansi::TerminalXY,
+    terminal_gui: &gui::terminal::TerminalGUI,
 ) -> AdditionalViewAction {
     let mut rtn = AdditionalViewAction::None;
     match input {
-        IEvent::Esc => buffer.unset_secondary_cursor(),
-        IEvent::Backspace => buffer.del_n(Side::Left, 1),
-        IEvent::Delete => buffer.del_n(Side::Right, 1),
-        IEvent::Enter => {
+        InputEvent::Esc => buffer.unset_secondary_cursor(),
+        InputEvent::Backspace => buffer.del_n(Side::Left, 1),
+        InputEvent::Delete => buffer.del_n(Side::Right, 1),
+        InputEvent::Enter => {
             // TODO: Run
             // buffer.enter();
             // command_run = true;
         }
-        IEvent::Tab => {
+        InputEvent::Tab => {
             let hints = buffer.get_argument_hints();
             let curr = buffer.arg_locs(buffer.get_curr_arg());
             let hint = &hints[buffer.get_curr_arg()].1;
             let hint_arg = hint.last_closest_match().unwrap()[(curr.1 - curr.0 - hint.disregard())..].to_string();
             buffer.insert_str_main_cursor(&hint_arg);
         }
-        IEvent::Character(c) => {
+        InputEvent::Character(c) => {
             buffer.del_betw_curs();
             buffer.insert_char_main_cursor(c);
         }
-        IEvent::CtrlBackspace => buffer.del_jump(Side::Left),
-        IEvent::CtrlDelete => buffer.del_jump(Side::Left),
-        IEvent::CtrlC => unreachable!("This should be handled outside of the match statement!"),
+        InputEvent::CtrlBackspace => buffer.del_jump(Side::Left),
+        InputEvent::CtrlDelete => buffer.del_jump(Side::Left),
+        InputEvent::CtrlC => unreachable!("This should be handled outside of the match statement!"),
 
-        IEvent::ArrowLeft => {
+        InputEvent::ArrowLeft => {
             buffer.main_cur_set(buffer.move_n(Side::Left, 1, buffer.main_cur()));
             buffer.unset_secondary_cursor();
         }
-        IEvent::ArrowRight => {
+        InputEvent::ArrowRight => {
             buffer.main_cur_set(buffer.move_n(Side::Right, 1, buffer.main_cur()));
             buffer.unset_secondary_cursor();
         }
 
-        IEvent::CtrlArrowLeft => {
+        InputEvent::CtrlArrowLeft => {
             buffer.main_cur_set(buffer.jump(Side::Left, buffer.main_cur()));
             buffer.unset_secondary_cursor();
         }
-        IEvent::CtrlArrowRight => {
+        InputEvent::CtrlArrowRight => {
             buffer.main_cur_set(buffer.jump(Side::Right, buffer.main_cur()));
             buffer.unset_secondary_cursor();
         }
 
-        IEvent::AltArrowLeft => {
+        InputEvent::AltArrowLeft => {
             buffer.enable_sec_cur_if_not_active();
             let new_pos = buffer.move_n(Side::Left, 1, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true)
         }
-        IEvent::AltArrowRight => {
+        InputEvent::AltArrowRight => {
             buffer.enable_sec_cur_if_not_active();
             let new_pos = buffer.move_n(Side::Right, 1, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true);
         }
 
-        IEvent::CtrlShiftArrowLeft => {
+        InputEvent::CtrlShiftArrowLeft => {
             buffer.enable_sec_cur_if_not_active();
             let new_pos = buffer.jump(Side::Left, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true)
         }
-        IEvent::CtrlShiftArrowRight => {
+        InputEvent::CtrlShiftArrowRight => {
             buffer.enable_sec_cur_if_not_active();
             let new_pos = buffer.jump(Side::Right, buffer.sec_cur());
             buffer.sec_cur_set(new_pos, true)
         }
-        IEvent::Resize(size) => *term_size = size,
+        InputEvent::Resize(size) => *term_size = size,
 
-        IEvent::CtrlD => {
+        InputEvent::CtrlD => {
             let view = terminal_gui.additional_view_no_data();
             if let Some(active_view) = view {
                 if active_view == gui::AdditionalViewNoData::Table {
@@ -95,7 +93,7 @@ fn update_buffer<'a>(
             }
         }
 
-        IEvent::CtrlT => {
+        InputEvent::CtrlT => {
             let view = terminal_gui.additional_view_no_data();
             if let Some(active_view) = view {
                 if active_view == gui::AdditionalViewNoData::Dropdown {
@@ -109,24 +107,24 @@ fn update_buffer<'a>(
         }
 
         _ => ()
-        // IEvent::CtrlD => buffer.ctrl_d(),
-        // IEvent::CtrlS => buffer.ctrl_s(),
-        // IEvent::CtrlT => buffer.ctrl_t(),
+        // InputEvent::CtrlD => buffer.ctrl_d(),
+        // InputEvent::CtrlS => buffer.ctrl_s(),
+        // InputEvent::CtrlT => buffer.ctrl_t(),
         //
-        // IEvent::ArrowUp => buffer.up(),
-        // IEvent::ArrowDown => buffer.down(),
+        // InputEvent::ArrowUp => buffer.up(),
+        // InputEvent::ArrowDown => buffer.down(),
         //
-        // IEvent::ShiftArrowUp => buffer.shift_up(),
-        // IEvent::ShiftArrowDown => buffer.shift_down(),
+        // InputEvent::ShiftArrowUp => buffer.shift_up(),
+        // InputEvent::ShiftArrowDown => buffer.shift_down(),
         //
         //
-        // IEvent::Other(key) => buffer.other(key),
+        // InputEvent::Other(key) => buffer.other(key),
     }
     buffer.update();
     rtn
 }
 
-fn execute_action(action: gui::ActionToExecute, buffer: &mut whale_rs::buffer::InputBuffer) {
+fn execute_action(action: gui::ActionToExecute, buffer: &mut buffer::InputBuffer) {
     match action {
         gui::ActionToExecute::SetClosestMatch(s) => {
             let curr_arg = buffer.get_curr_arg();
@@ -135,12 +133,27 @@ fn execute_action(action: gui::ActionToExecute, buffer: &mut whale_rs::buffer::I
     }
 }
 
+fn update_view(view: AdditionalViewAction, terminal_gui: &mut gui::terminal::TerminalGUI, write_from_line: u16) {
+    match view {
+        AdditionalViewAction::None => (),
+        AdditionalViewAction::SetTo(view) => {
+            terminal_gui.clear_output(write_from_line);
+            terminal_gui.set_using(Some(view))
+        }
+        AdditionalViewAction::Unset => {
+            terminal_gui.clear_output(write_from_line);
+            terminal_gui.set_using(None)
+        }
+    }
+}
+
+#[allow(unused_variables)]
 fn runtime_loop(
-    program_state: &whale_rs::state::ProgramState,
-    mut buffer: whale_rs::buffer::InputBuffer,
+    program_state: &state::ProgramState,
+    mut buffer: buffer::InputBuffer,
     mut terminal_gui: gui::terminal::TerminalGUI,
 ) {
-    whale_rs::ansi::erase_screen();
+    ansi::erase_screen();
 
     let mut term_size = (1, 1);
 
@@ -154,7 +167,7 @@ fn runtime_loop(
             term_size = crossterm::terminal::size().unwrap();
         }
 
-        input = match whale_rs::input::get_input() {
+        input = match input::get_input() {
             Ok(inp) => inp,
             Err(_) => continue
         };
@@ -179,18 +192,9 @@ fn runtime_loop(
                 execute_action(other, &mut buffer);
             } else {
                 let view = update_buffer(input.clone(), &mut buffer, &mut term_size, &terminal_gui);
-                match view {
-                    AdditionalViewAction::None => (),
-                    AdditionalViewAction::SetTo(view) => {
-                        terminal_gui.clear_output(write_from_line);
-                        terminal_gui.set_using(Some(view))
-                    }
-                    AdditionalViewAction::Unset => {
-                        terminal_gui.clear_output(write_from_line);
-                        terminal_gui.set_using(None)
-                    }
-                }
-                action_to_take = terminal_gui.action_before_write(
+                update_view(view, &mut terminal_gui, write_from_line);
+
+                terminal_gui.action_before_write(
                     &buffer,
                     InputEvent::Dummy,
                     term_size,
@@ -211,16 +215,16 @@ fn runtime_loop(
 
 fn main() {
     let program_state = {
-        let config = whale_rs::config::read_or_create_all_configs();
+        let config = config::read_or_create_all_configs();
         if !config.core.data_dir.exists() {
             std::fs::create_dir_all(&config.core.data_dir).unwrap();
         }
 
         let current_working_directory = std::env::current_dir().unwrap();
 
-        whale_rs::state::ProgramState::init(config, current_working_directory)
+        state::ProgramState::init(config, current_working_directory)
     };
-    let buffer = whale_rs::buffer::InputBuffer::init(&program_state);
+    let buffer = buffer::InputBuffer::init(&program_state);
     let terminal_gui = gui::terminal::TerminalGUI::init(&program_state);
 
     crossterm::terminal::enable_raw_mode().unwrap();

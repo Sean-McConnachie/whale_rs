@@ -7,7 +7,7 @@ authors = ["Sean McConnachie<seanjulian.mcc@gmail.com>"]
 [dependencies]
 crossterm = "0.27.0"
 ctrlc = "3.3.1"
-toml = "0.7.4"
+toml = "0.8.0"
 serde = { version = "1.0.0", features = ["derive"] }
 anyhow = "1.0.0"
 lazy_static = "1.4.0"

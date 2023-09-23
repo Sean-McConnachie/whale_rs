@@ -1,6 +1,6 @@
-use crate::{ansi, buffer, hints, state};
+use crate::{ansi, buffer, state};
 use crate::ansi::TerminalXY;
-use crate::gui::{ActionToExecute, ActionToTake, ActionType, AdditionalViewDraw};
+use crate::gui::{ActionToExecute, ActionToTake, ActionType};
 use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;
 
@@ -113,6 +113,7 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
         }
     }
 
+    #[allow(unused_variables)]
     fn action_before_write(
         &mut self,
         event: InputEvent,
@@ -201,8 +202,8 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
 
             (0..upper)
                 .map(|x| {
-                    let i = ((x + (self.table_scroll * grid_slots.0 as usize))
-                        .rem_euclid(num_hints));
+                    let i = (x + (self.table_scroll * grid_slots.0 as usize))
+                        .rem_euclid(num_hints);
                     hint_indexes[i]
                 }).collect()
         };
@@ -221,6 +222,7 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
         }
     }
 
+    #[allow(unused_variables)]
     fn write_output(
         &mut self,
         event: InputEvent,
@@ -263,7 +265,7 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
             let mut col = 0;
             let mut style = &self.program_state.config.theme.console_secondary.normal;
 
-            for (i) in &self.hints_iterator {
+            for i in &self.hints_iterator {
                 let item = &hints[*i];
 
                 if col % self.grid_slots.0 == 0 && !first {

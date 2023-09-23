@@ -1,6 +1,6 @@
 use crate::{ansi, buffer, state};
 use crate::ansi::TerminalXY;
-use crate::gui::{ActionToExecute, ActionToTake, ActionType, AdditionalViewDraw};
+use crate::gui::{ActionToExecute, ActionToTake, ActionType};
 use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;
 
@@ -64,6 +64,7 @@ impl<'a> super::GUITrait<'a> for DropdownGUI<'a> {
         }
     }
 
+    #[allow(unused_variables)]
     fn action_before_write(
         &mut self,
         event: InputEvent,
@@ -141,6 +142,7 @@ impl<'a> super::GUITrait<'a> for DropdownGUI<'a> {
         }
     }
 
+    #[allow(unused_variables)]
     fn write_output(
         &mut self,
         event: InputEvent,
@@ -196,5 +198,6 @@ impl<'a> super::GUITrait<'a> for DropdownGUI<'a> {
         }
     }
 
+    #[allow(unused_variables)]
     fn clear_output(&mut self, write_from_line: u16) -> () {}
 }

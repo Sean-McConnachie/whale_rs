@@ -1,5 +1,4 @@
-use std::ffi::OsString;
-use crate::{config, config::command, enums, hints, state};
+use crate::{config::command, enums, hints, state};
 use std::path;
 use crate::hints::Disregard;
 

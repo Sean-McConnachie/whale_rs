@@ -87,6 +87,7 @@ impl<'a> AdditionalView<'a> {
 }
 
 impl<'a> GUITrait<'a> for AdditionalView<'a> {
+    #[allow(unused_variables)]
     fn init(program_state: &'a state::ProgramState) -> Self {
         panic!("Cannot init AdditionalView through enum")
     }

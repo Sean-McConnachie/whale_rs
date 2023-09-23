@@ -1,7 +1,7 @@
 use crate::{state, utils, input, buffer, enums, ansi, hints};
 use crate::ansi::TerminalXY;
 use crate::config::theme;
-use crate::gui::{ActionToExecute, ActionToTake, ActionType};
+use crate::gui::{ActionToTake, ActionType};
 
 use super::GUITrait;
 
@@ -113,8 +113,6 @@ impl<'a> TerminalGUI<'a>
 
         let theme = &self.program_state.config.theme;
 
-        // TODO: Increased length by inline hint
-        let mut increased_length = 0;
         let (cur_a, cur_b) = buf.cursor_range();
         let arg_hints = buf.get_argument_hints();
         let splits = buf.get_splits();

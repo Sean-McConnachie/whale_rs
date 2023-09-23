@@ -90,7 +90,7 @@ pub fn read_commands(command_dir: &path::PathBuf) -> Vec<ConfigCommand> {
     commands
 }
 
-fn read_config<P: AsRef<std::path::Path>, T: for<'de> Deserialize<'de>>(
+fn read_config<P: AsRef<path::Path>, T: for<'de> Deserialize<'de>>(
     path: P,
 ) -> anyhow::Result<T> {
     let mut file = std::fs::File::open(path)?;
