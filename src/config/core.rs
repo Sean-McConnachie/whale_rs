@@ -22,7 +22,7 @@ impl Default for ConfigCore {
         let config_dir = PathBuf::from("");
         let data_dir = PathBuf::from("data");
         Self {
-            default_shell: Shell::CommandPrompt,
+            default_shell: Shell::default(),
             config_dir,
             data_dir,
         }

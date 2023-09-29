@@ -80,7 +80,7 @@ fn update_buffer<'a>(
         }
         InputEvent::Resize(size) => *term_size = size,
 
-        InputEvent::CtrlD => {
+        InputEvent::CtrlS => {
             let view = terminal_gui.additional_view_no_data();
             if let Some(active_view) = view {
                 if active_view == gui::AdditionalViewNoData::Explorer {

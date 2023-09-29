@@ -83,6 +83,10 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
+    pub fn get_current_command(&self) -> Option<&'a command::ConfigCommand> {
+        self.current_command
+    }
+
     pub fn get_buffer(&self) -> &[char] {
         &self.buffer[..self.input_length]
     }
