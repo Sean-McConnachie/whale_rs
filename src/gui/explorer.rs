@@ -1,7 +1,9 @@
+use std::cell::RefCell;
 use std::path;
+use std::rc::Rc;
 use crate::ansi::TerminalXY;
 use crate::buffer::InputBuffer;
-use crate::gui::{ActionToTake, ActionType};
+use crate::gui::{ActionToTake, ActionType, ViewType};
 use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;
 use crate::{ansi, state};
@@ -210,8 +212,8 @@ impl FinalCol {
     }
 }
 
-pub struct FileExplorerGUI<'a> {
-    program_state: &'a state::ProgramState,
+pub struct FileExplorerGUI {
+    program_state: Rc<RefCell<state::ProgramState>>,
 
     num_rows: u16,
     col_width: usize,
@@ -221,21 +223,11 @@ pub struct FileExplorerGUI<'a> {
     col_rig: FinalCol,
 }
 
-impl<'a> FileExplorerGUI<'a> {
-    fn resolve_final_col(dir_info: &DirInfo) -> FinalCol {
-        let entry = dir_info.get_entry();
-        match entry.is_dir() {
-            true => FinalCol::Dir(DirInfo::new(entry.clone())),
-            false => FinalCol::File(FileInfo::new(entry.clone())),
-        }
-    }
-}
-
-impl<'a> super::GUITrait<'a> for FileExplorerGUI<'a> {
-    fn init(program_state: &'a state::ProgramState) -> Self {
-        let curr_dir = &program_state.current_working_directory;
+impl FileExplorerGUI {
+    pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
+        let curr_dir = program_state.borrow().current_working_directory.clone();
         let mut col_lef = DirInfo::new(curr_dir.parent().unwrap().to_path_buf());
-        col_lef.try_scroll_to(curr_dir);
+        col_lef.try_scroll_to(&curr_dir);
         let col_mid = DirInfo::new(curr_dir.clone());
         let col_rig = Self::resolve_final_col(&col_mid);
 
@@ -247,6 +239,20 @@ impl<'a> super::GUITrait<'a> for FileExplorerGUI<'a> {
             col_mid,
             col_rig,
         }
+    }
+
+    fn resolve_final_col(dir_info: &DirInfo) -> FinalCol {
+        let entry = dir_info.get_entry();
+        match entry.is_dir() {
+            true => FinalCol::Dir(DirInfo::new(entry.clone())),
+            false => FinalCol::File(FileInfo::new(entry.clone())),
+        }
+    }
+}
+
+impl super::GUITrait for FileExplorerGUI{
+    fn view_type(&self) -> ViewType {
+        ViewType::Explorer
     }
 
     fn action_before_write(
@@ -309,7 +315,8 @@ impl<'a> super::GUITrait<'a> for FileExplorerGUI<'a> {
         ansi::move_to((0, write_from_line));
         ansi::erase_screen_from_cursor();
 
-        let theme = &self.program_state.config.theme;
+        let program_state = self.program_state.borrow();
+        let theme = &program_state.config.theme;
 
         self.col_lef.draw((0, write_from_line), (self.col_width as u16, self.num_rows), theme);
         self.col_mid.draw((self.col_width as u16, write_from_line), (self.col_width as u16, self.num_rows), theme);

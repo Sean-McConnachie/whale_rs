@@ -1,11 +1,13 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::{ansi, buffer, state};
 use crate::ansi::TerminalXY;
 use crate::gui::{ActionToExecute, ActionToTake, ActionType, HighlightDrawn};
 use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;
 
-pub struct DropdownGUI<'a> {
-    program_state: &'a state::ProgramState,
+pub struct DropdownGUI {
+    program_state: Rc<RefCell<state::ProgramState>>,
 
     cursor_pos: usize,
     table_scroll: usize,
@@ -17,7 +19,18 @@ pub struct DropdownGUI<'a> {
     arg_start: CursorPos,
 }
 
-impl<'a> DropdownGUI<'a> {
+impl DropdownGUI{
+    pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
+        Self {
+            program_state,
+            cursor_pos: 0,
+            table_scroll: 0,
+            prev_len: 0,
+            hints_iterator: Vec::new(),
+            arg_start: (0, 0),
+        }
+    }
+
     #[inline(always)]
     fn arrow_up(&mut self, cur_max: usize, scroll_max: usize) -> bool {
         if self.cursor_pos > 0 {
@@ -45,16 +58,9 @@ impl<'a> DropdownGUI<'a> {
     }
 }
 
-impl<'a> super::GUITrait<'a> for DropdownGUI<'a> {
-    fn init(program_state: &'a state::ProgramState) -> Self {
-        Self {
-            program_state,
-            cursor_pos: 0,
-            table_scroll: 0,
-            prev_len: 0,
-            hints_iterator: Vec::new(),
-            arg_start: (0, 0),
-        }
+impl super::GUITrait for DropdownGUI {
+    fn view_type(&self) -> super::ViewType {
+        super::ViewType::Dropdown
     }
 
     #[allow(unused_variables)]
@@ -74,7 +80,7 @@ impl<'a> super::GUITrait<'a> for DropdownGUI<'a> {
         // Basic dimensions
         let write_table_from_line = (write_from_line + 1).min(term_size.1);
         let dropdown_rows = (term_size.1 - write_table_from_line)
-            .min(self.program_state.config.gui.dropdown.max_rows);
+            .min(self.program_state.borrow().config.gui.dropdown.max_rows);
 
         // Find relevant hints
         // TODO: This is a bit of a mess
@@ -146,6 +152,7 @@ impl<'a> super::GUITrait<'a> for DropdownGUI<'a> {
         ansi::move_to((0, write_from_line));
         ansi::erase_line();
 
+        let program_state = self.program_state.borrow();
         fn multi_line_str(s: &str, max_len: usize) -> Vec<&str> {
             let mut lines = vec![];
             let max_ind = max_len.min(s.len());
@@ -163,7 +170,7 @@ impl<'a> super::GUITrait<'a> for DropdownGUI<'a> {
             }
 
             let mut cursor_drawn = HighlightDrawn::Before;
-            let mut style = &self.program_state.config.theme.console_secondary.normal;
+            let mut style = &program_state.config.theme.console_secondary.normal;
             let max_len = (term_size.0 - self.arg_start.0) as usize;
             let max_lines = (term_size.1 - self.arg_start.1) as usize;
             let mut num_lines = 1;
@@ -172,10 +179,10 @@ impl<'a> super::GUITrait<'a> for DropdownGUI<'a> {
 
                 if cursor_drawn == HighlightDrawn::Before && i == self.cursor_pos {
                     cursor_drawn = HighlightDrawn::During;
-                    style = &self.program_state.config.theme.console_secondary.highlighted;
+                    style = &program_state.config.theme.console_secondary.highlighted;
                 } else if cursor_drawn == HighlightDrawn::During {
                     cursor_drawn = HighlightDrawn::After;
-                    style = &self.program_state.config.theme.console_secondary.normal;
+                    style = &program_state.config.theme.console_secondary.normal;
                 };
 
                 let lines = multi_line_str(&item, max_len);

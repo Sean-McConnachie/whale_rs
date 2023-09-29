@@ -7,17 +7,17 @@ pub mod filesystem;
 pub type Disregard = usize;
 
 #[derive(Debug)]
-pub struct Hint<'a> {
+pub struct Hint {
     /// Assumes selection is alphabetically sorted!
     selection: Vec<String>,
-    inlay: Option<&'a str>,
+    inlay: Option<String>,
     set_using: path::PathBuf,
     disregard: Disregard,
     last_closest_match: Option<String>,
 }
 
-impl<'a> Hint<'a> {
-    pub fn new(selection: Vec<String>, inlay: Option<&'a str>) -> Self {
+impl Hint {
+    pub fn new(selection: Vec<String>, inlay: Option<String>) -> Self {
         Self {
             selection,
             inlay,
@@ -44,7 +44,7 @@ impl<'a> Hint<'a> {
         self.set_using = set_using;
     }
 
-    pub fn set_inlay(&mut self, inlay: Option<&'a str>) {
+    pub fn set_inlay(&mut self, inlay: Option<String>) {
         self.inlay = inlay;
     }
 
@@ -63,7 +63,7 @@ impl<'a> Hint<'a> {
     // TODO: Cleanup more rubbish
     pub fn closest_match(&mut self, s: &str) {
         let x = if s.is_empty() && self.inlay.is_some() {
-            Some(self.inlay.unwrap().to_string())
+            Some(self.inlay.as_ref().unwrap().to_string())
         } else if s.is_empty() {
             self.selection.first().map(|x| x.clone())
         } else {
@@ -79,9 +79,9 @@ impl<'a> Hint<'a> {
         self.last_closest_match = Some(s);
     }
 
-    pub fn filtered_items(&self, s: &'a str) -> impl Iterator<Item=&str> {
+    pub fn filtered_items(&self, s: String) -> impl Iterator<Item=&str> {
         self.selection.iter().filter_map(move |v| {
-            if v.starts_with(s) {
+            if v.starts_with(&s) {
                 Some(v.as_str())
             } else {
                 None
@@ -90,7 +90,7 @@ impl<'a> Hint<'a> {
     }
 }
 
-impl<'a> Default for Hint<'a> {
+impl Default for Hint {
     fn default() -> Self {
         Self {
             selection: vec![],

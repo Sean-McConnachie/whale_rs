@@ -1,5 +1,7 @@
+use std::cell::RefCell;
 use crate::{config::command, enums, hints, state};
 use std::path;
+use std::rc::Rc;
 use crate::hints::Disregard;
 
 const BUFFER_LENGTH: usize = 8192;
@@ -47,7 +49,7 @@ impl Cursor {
 }
 
 #[derive(Debug)]
-pub struct InputBuffer<'a> {
+pub struct InputBuffer {
     buffer: [char; BUFFER_LENGTH],
     input_length: usize,
 
@@ -60,15 +62,15 @@ pub struct InputBuffer<'a> {
 
     quote_locs: Vec<BufferPosition>,
 
-    program_state: &'a state::ProgramState,
-    current_command: Option<&'a command::ConfigCommand>,
-    argument_hints: Vec<(enums::ArgType, hints::Hint<'a>)>,
+    program_state: Rc<RefCell<state::ProgramState>>,
+    current_command: Option<command::ConfigCommand>,
+    argument_hints: Vec<(enums::ArgType, hints::Hint)>,
 
     curr_arg: usize,
 }
 
-impl<'a> InputBuffer<'a> {
-    pub fn init(program_state: &'a state::ProgramState) -> Self {
+impl InputBuffer {
+    pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
         Self {
             buffer: ['\0'; BUFFER_LENGTH],
             input_length: 0,
@@ -83,8 +85,8 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
-    pub fn get_current_command(&self) -> Option<&'a command::ConfigCommand> {
-        self.current_command
+    pub fn get_current_command(&self) -> Option<&command::ConfigCommand> {
+        self.current_command.as_ref()
     }
 
     pub fn get_buffer(&self) -> &[char] {
@@ -151,7 +153,7 @@ impl<'a> InputBuffer<'a> {
         }
     }
 
-    fn push_or_replace(&mut self, i: usize, val: (enums::ArgType, hints::Hint<'a>)) {
+    fn push_or_replace(&mut self, i: usize, val: (enums::ArgType, hints::Hint)) {
         if i < self.argument_hints.len() {
             self.argument_hints[i] = val;
         } else {
@@ -190,7 +192,7 @@ impl<'a> InputBuffer<'a> {
         let disregard = s.len() - last;
 
         let fp = match fp.is_relative() {
-            true => self.program_state.current_working_directory.join(fp),
+            true => self.program_state.borrow().current_working_directory.join(fp),
             false => fp,
         };
 
@@ -218,7 +220,7 @@ impl<'a> InputBuffer<'a> {
         &mut self,
         i: usize,
         arg: &str,
-        cmd: &'a command::ConfigCommand,
+        cmd: &command::ConfigCommand,
         arg_flag_skips: &mut Vec<usize>,
     ) -> Skip {
         let mut skip = Skip::None;
@@ -238,7 +240,7 @@ impl<'a> InputBuffer<'a> {
                         }
                         enums::ArgType::Path => hints::filesystem::make_directory_hints(
                             self.arg_to_path(&arg),
-                            Some(&arg_flag.arg_hint),
+                            Some(arg_flag.arg_hint.to_string()),
                         ),
                         enums::ArgType::Text => hints::Hint::default(),
                     };
@@ -266,7 +268,7 @@ impl<'a> InputBuffer<'a> {
         &mut self,
         i: usize,
         arg: &str,
-        cmd: &'a command::ConfigCommand,
+        cmd: &command::ConfigCommand,
         flag_skips: &mut Vec<usize>,
     ) -> Skip {
         for (k, flag) in cmd.flags.iter().enumerate() {
@@ -288,7 +290,7 @@ impl<'a> InputBuffer<'a> {
         &mut self,
         i: usize,
         arg: &str,
-        cmd: &'a command::ConfigCommand,
+        cmd: &command::ConfigCommand,
         arg_c: &mut usize,
         arg_skips: &mut Vec<usize>,
     ) -> Skip {
@@ -304,7 +306,7 @@ impl<'a> InputBuffer<'a> {
                         }
                         enums::ArgType::Path => hints::filesystem::make_directory_hints(
                             self.arg_to_path(&arg),
-                            Some(&single_arg.arg_hint),
+                            Some(single_arg.arg_hint.to_string()),
                         ),
                         enums::ArgType::Text => hints::Hint::default(),
                     };
@@ -351,14 +353,14 @@ impl<'a> InputBuffer<'a> {
 
         if !first_arg.is_empty() {
             if self.current_command.is_some() {
-                if first_arg != self.current_command.unwrap().exe_name {
+                if first_arg != self.current_command.as_ref().unwrap().exe_name {
                     self.current_command = None;
                 }
             }
             if self.current_command.is_none() {
-                for cmd in &self.program_state.config.commands {
+                for cmd in &self.program_state.borrow().config.commands {
                     if cmd.exe_name == first_arg {
-                        self.current_command = Some(&cmd);
+                        self.current_command = Some(cmd.clone()); // TODO: Try get rid of this clone
                     }
                 }
             }
@@ -378,7 +380,7 @@ impl<'a> InputBuffer<'a> {
             return;
         }
 
-        let cmd = self.current_command.unwrap();
+        let cmd = self.current_command.as_ref().unwrap().clone(); // TODO: Get rid of this clone
 
         let mut flag_skips = Vec::with_capacity(cmd.flags.len());
         let mut arg_skips = Vec::with_capacity(cmd.args.len());
@@ -400,7 +402,7 @@ impl<'a> InputBuffer<'a> {
                 continue;
             }
             // TODO: Use binary searches instead
-            skip = Self::process_arg_flags(self, i, &arg, cmd, &mut arg_flag_skips);
+            skip = Self::process_arg_flags(self, i, &arg, &cmd, &mut arg_flag_skips);
 
             if skip == Skip::Once {
                 skip = Skip::None;
@@ -410,7 +412,7 @@ impl<'a> InputBuffer<'a> {
                 continue 'outer;
             }
 
-            skip = Self::process_flags(self, i, &arg, cmd, &mut flag_skips);
+            skip = Self::process_flags(self, i, &arg, &cmd, &mut flag_skips);
 
             if skip == Skip::Once {
                 skip = Skip::None;
@@ -420,7 +422,7 @@ impl<'a> InputBuffer<'a> {
                 continue 'outer;
             }
 
-            skip = Self::process_args(self, i, &arg, cmd, &mut arg_c, &mut arg_skips);
+            skip = Self::process_args(self, i, &arg, &cmd, &mut arg_c, &mut arg_skips);
 
             if skip == Skip::Once {
                 skip = Skip::None;

@@ -1,18 +1,36 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use whale_rs::input::{InputEvent};
 use whale_rs::buffer::Side;
 use whale_rs::{ansi, buffer, config, gui, input, state};
+use whale_rs::gui::{explorer, GUITrait, ViewType, ViewTypeData};
+
+fn toggle_view_action(
+    view_action: &mut AdditionalViewAction,
+    active_view: Option<ViewType>,
+    target: ViewType) {
+    if let Some(active) = active_view {
+        if active == target {
+            *view_action = AdditionalViewAction::Unset;
+        } else {
+            *view_action = AdditionalViewAction::SetTo(target);
+        }
+    } else {
+        *view_action = AdditionalViewAction::SetTo(target);
+    }
+}
 
 enum AdditionalViewAction {
     None,
-    SetTo(gui::AdditionalViewNoData),
+    SetTo(ViewType),
     Unset,
 }
 
-fn update_buffer<'a>(
+fn update_buffer(
     input: InputEvent,
-    buffer: &'a mut buffer::InputBuffer,
+    buffer: &mut buffer::InputBuffer,
     term_size: &mut ansi::TerminalXY,
-    terminal_gui: &gui::terminal::TerminalGUI,
+    terminal_gui: &mut gui::terminal::TerminalGUI,
 ) -> AdditionalViewAction {
     let mut rtn = AdditionalViewAction::None;
     match input {
@@ -81,42 +99,18 @@ fn update_buffer<'a>(
         InputEvent::Resize(size) => *term_size = size,
 
         InputEvent::CtrlS => {
-            let view = terminal_gui.additional_view_no_data();
-            if let Some(active_view) = view {
-                if active_view == gui::AdditionalViewNoData::Explorer {
-                    rtn = AdditionalViewAction::Unset;
-                } else {
-                    rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Explorer);
-                }
-            } else {
-                rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Explorer);
-            }
+            let view = terminal_gui.view_type();
+            toggle_view_action(&mut rtn, view, ViewType::Explorer)
         }
 
         InputEvent::CtrlD => {
-            let view = terminal_gui.additional_view_no_data();
-            if let Some(active_view) = view {
-                if active_view == gui::AdditionalViewNoData::Table {
-                    rtn = AdditionalViewAction::Unset;
-                } else {
-                    rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Table);
-                }
-            } else {
-                rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Table);
-            }
+            let view = terminal_gui.view_type();
+            toggle_view_action(&mut rtn, view, ViewType::Dropdown)
         }
 
         InputEvent::CtrlT => {
-            let view = terminal_gui.additional_view_no_data();
-            if let Some(active_view) = view {
-                if active_view == gui::AdditionalViewNoData::Dropdown {
-                    rtn = AdditionalViewAction::Unset;
-                } else {
-                    rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Dropdown);
-                }
-            } else {
-                rtn = AdditionalViewAction::SetTo(gui::AdditionalViewNoData::Dropdown);
-            }
+            let view = terminal_gui.view_type();
+            toggle_view_action(&mut rtn, view, ViewType::Table)
         }
 
         _ => ()
@@ -146,23 +140,42 @@ fn execute_action(action: gui::ActionToExecute, buffer: &mut buffer::InputBuffer
     }
 }
 
-fn update_view(view: AdditionalViewAction, terminal_gui: &mut gui::terminal::TerminalGUI, write_from_line: u16) {
+fn update_view(
+    view: AdditionalViewAction,
+    terminal_gui: &mut gui::terminal::TerminalGUI,
+    write_from_line: u16,
+    program_state: &Rc<RefCell<state::ProgramState>>
+) {
     match view {
         AdditionalViewAction::None => (),
-        AdditionalViewAction::SetTo(view) => {
-            terminal_gui.clear_output(write_from_line);
-            terminal_gui.set_using(Some(view))
-        }
         AdditionalViewAction::Unset => {
             terminal_gui.clear_output(write_from_line);
             terminal_gui.set_using(None)
+        }
+        AdditionalViewAction::SetTo(view) => {
+            terminal_gui.clear_output(write_from_line);
+            let trait_obj = match view {
+                ViewType::Table => {
+                    let table = gui::table::TableGUI::init(program_state.clone());
+                    Box::new(table) as Box<dyn GUITrait>
+                }
+                ViewType::Dropdown => {
+                    let dropdown = gui::dropdown::DropdownGUI::init(program_state.clone());
+                    Box::new(dropdown) as Box<dyn GUITrait>
+                }
+                ViewType::Explorer => {
+                    let explorer = explorer::FileExplorerGUI::init(program_state.clone());
+                   Box::new(explorer) as Box<dyn GUITrait>
+                }
+            };
+            terminal_gui.set_using(Some(trait_obj));
         }
     }
 }
 
 #[allow(unused_variables)]
 fn runtime_loop(
-    program_state: &state::ProgramState,
+    program_state: Rc<RefCell<state::ProgramState>>,
     mut buffer: buffer::InputBuffer,
     mut terminal_gui: gui::terminal::TerminalGUI,
 ) {
@@ -170,6 +183,7 @@ fn runtime_loop(
 
     let mut term_size = (1, 1);
 
+    let mut view_type_data = ViewTypeData::None;
     let mut iter: u128 = 0;
     let mut positions;
     let mut write_from_line;
@@ -197,15 +211,15 @@ fn runtime_loop(
             term_size,
             write_from_line,
             positions.0,
-            positions.2
+            positions.2,
         );
 
         if let gui::ActionToTake::WriteBuffer(action) = action_to_take {
             if let gui::ActionType::Other(other) = action {
                 execute_action(other, &mut buffer);
             } else {
-                let view = update_buffer(input.clone(), &mut buffer, &mut term_size, &terminal_gui);
-                update_view(view, &mut terminal_gui, write_from_line);
+                let view = update_buffer(input.clone(), &mut buffer, &mut term_size, &mut terminal_gui);
+                update_view(view, &mut terminal_gui, write_from_line, &program_state);
 
                 terminal_gui.action_before_write(
                     &buffer,
@@ -234,10 +248,11 @@ fn main() {
 
         state::ProgramState::init(config, current_working_directory)
     };
-    let buffer = buffer::InputBuffer::init(&program_state);
-    let terminal_gui = gui::terminal::TerminalGUI::init(&program_state);
+    let program_state = Rc::new(RefCell::new(program_state));
+    let buffer = buffer::InputBuffer::init(program_state.clone());
+    let terminal_gui = gui::terminal::TerminalGUI::init(program_state.clone());
 
     crossterm::terminal::enable_raw_mode().unwrap();
-    runtime_loop(&program_state, buffer, terminal_gui);
+    runtime_loop(program_state, buffer, terminal_gui);
     crossterm::terminal::disable_raw_mode().unwrap();
 }

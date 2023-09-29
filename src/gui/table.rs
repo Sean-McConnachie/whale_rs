@@ -1,11 +1,13 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::{ansi, buffer, state};
 use crate::ansi::TerminalXY;
-use crate::gui::{ActionToExecute, ActionToTake, ActionType, HighlightDrawn};
+use crate::gui::{ActionToExecute, ActionToTake, ActionType, HighlightDrawn, ViewType};
 use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;
 
-pub struct TableGUI<'a> {
-    program_state: &'a state::ProgramState,
+pub struct TableGUI {
+    program_state: Rc<RefCell<state::ProgramState>>,
 
     cursor_pos: TerminalXY,
     table_scroll: usize,
@@ -18,9 +20,22 @@ pub struct TableGUI<'a> {
     hints_iterator: Vec<usize>,
 }
 
-impl<'a> TableGUI<'a> {
+impl TableGUI {
     const CURSOR_HOME: TerminalXY = (0, 0);
     const TABLE_SCROLL: usize = 0;
+
+    pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
+        Self {
+            program_state,
+            cursor_pos: Self::CURSOR_HOME,
+            table_scroll: Self::TABLE_SCROLL,
+            prev_len: 0,
+            hints_iterator: Vec::new(),
+            grid_slots: Self::CURSOR_HOME,
+            preceding_cur: 0,
+            succeeding_cur: 0,
+        }
+    }
 
     #[inline(always)]
     fn arrow_up(&mut self, cur_pos_last: TerminalXY, scroll_max: usize) -> bool {
@@ -92,18 +107,9 @@ impl<'a> TableGUI<'a> {
     }
 }
 
-impl<'a> super::GUITrait<'a> for TableGUI<'a> {
-    fn init(program_state: &'a state::ProgramState) -> Self {
-        Self {
-            program_state,
-            cursor_pos: Self::CURSOR_HOME,
-            table_scroll: Self::TABLE_SCROLL,
-            prev_len: 0,
-            hints_iterator: Vec::new(),
-            grid_slots: Self::CURSOR_HOME,
-            preceding_cur: 0,
-            succeeding_cur: 0,
-        }
+impl super::GUITrait for TableGUI {
+    fn view_type(&self) -> ViewType {
+        ViewType::Table
     }
 
     #[allow(unused_variables)]
@@ -119,7 +125,7 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
         // Basic dimensions
         let write_table_from_line = (write_from_line + 1).min(term_size.1);
         self.grid_slots = (
-            term_size.0 / self.program_state.config.gui.table.max_field_len,
+            term_size.0 / self.program_state.borrow().config.gui.table.max_field_len,
             term_size.1 - write_table_from_line
         ) as TerminalXY;
         let grid_slots = self.grid_slots;
@@ -236,8 +242,10 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
             }
         }
 
+        let program_state = self.program_state.borrow();
+
         {
-            let style = &self.program_state.config.theme.console_main.normal;
+            let style = &program_state.config.theme.console_main.normal;
             let s = format!("{} ^ / v {}", self.preceding_cur, self.succeeding_cur);
             super::output_str(style, s.as_str());
             ansi::move_down(1);
@@ -251,12 +259,12 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
                 hints = hint.1.get_selection();
             }
 
-            let max_len = self.program_state.config.gui.table.max_field_len as usize;
+            let max_len = program_state.config.gui.table.max_field_len as usize;
             let mut first = true;
             let mut cursor_drawn = HighlightDrawn::Before;
             let mut row = 0;
             let mut col = 0;
-            let mut style = &self.program_state.config.theme.console_secondary.normal;
+            let mut style = &program_state.config.theme.console_secondary.normal;
 
             for i in &self.hints_iterator {
                 let item = &hints[*i];
@@ -273,10 +281,10 @@ impl<'a> super::GUITrait<'a> for TableGUI<'a> {
                 if cursor_drawn == HighlightDrawn::Before
                     && row == self.cursor_pos.1 && col == self.cursor_pos.0 {
                     cursor_drawn = HighlightDrawn::During;
-                    style = &self.program_state.config.theme.console_secondary.highlighted;
+                    style = &program_state.config.theme.console_secondary.highlighted;
                 } else if cursor_drawn == HighlightDrawn::During {
                     cursor_drawn = HighlightDrawn::After;
-                    style = &self.program_state.config.theme.console_secondary.normal;
+                    style = &program_state.config.theme.console_secondary.normal;
                 };
 
                 let l = match shorten_str(item, max_len) {

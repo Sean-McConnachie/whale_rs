@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::{state, utils, input, buffer, enums, ansi, hints};
 use crate::ansi::TerminalXY;
 use crate::config::theme;
@@ -28,10 +30,10 @@ impl HighlightState {
     }
 }
 
-pub struct TerminalGUI<'a> {
-    program_state: &'a state::ProgramState,
+pub struct TerminalGUI {
+    program_state: Rc<RefCell<state::ProgramState>>,
 
-    additional_view: Option<super::AdditionalView<'a>>,
+    pub additional_view: Option<Box<dyn GUITrait>>,
 
     current_line: u16,
 
@@ -39,9 +41,9 @@ pub struct TerminalGUI<'a> {
 }
 
 
-impl<'a> TerminalGUI<'a>
+impl TerminalGUI
 {
-    pub fn init(program_state: &'a state::ProgramState) -> Self {
+    pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
         Self {
             short_cwd: String::new(),
             program_state,
@@ -50,24 +52,21 @@ impl<'a> TerminalGUI<'a>
         }
     }
 
-    pub fn set_using(&mut self, view: Option<super::AdditionalViewNoData>) {
-        if let Some(view) = view {
-            self.additional_view = Some(super::AdditionalView::from_enum(view, self.program_state));
-        } else {
-            self.additional_view = None;
-        }
+    pub fn set_using(&mut self, view: Option<Box<dyn GUITrait>>) {
+        self.additional_view = view;
     }
 
-    pub fn additional_view_no_data(&self) -> Option<super::AdditionalViewNoData> {
+    pub fn view_type(&self) -> Option<super::ViewType> {
         match &self.additional_view {
-            Some(view) => Some(view.additional_view_no_data()),
+            Some(view) => Some(view.view_type()),
             None => None,
         }
     }
 
     /// short_cwd is updated by calculate_increased_length
     pub fn output_path(&self) {
-        let theme = &self.program_state.config.theme;
+        let program_state = self.program_state.borrow();
+        let theme = &program_state.config.theme;
         super::output_str(&theme.console_main.normal, &self.short_cwd);
     }
 
@@ -111,7 +110,7 @@ impl<'a> TerminalGUI<'a>
             }
         }
 
-        let theme = &self.program_state.config.theme;
+        let theme = &self.program_state.borrow().config.theme;
 
         let (cur_a, cur_b) = buf.cursor_range();
         let arg_hints = buf.get_argument_hints();
@@ -245,7 +244,7 @@ impl<'a> TerminalGUI<'a>
             }
         }
 
-        self.short_cwd = utils::short_path(&self.program_state.current_working_directory);
+        self.short_cwd = utils::short_path(&self.program_state.borrow().current_working_directory);
 
         let upto_end = buffer.len() + self.short_cwd.len();
         let upto_cursor = buffer.main_cur().position() + self.short_cwd.len();

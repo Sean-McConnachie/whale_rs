@@ -18,7 +18,7 @@ fn get_files_in_directory(dir: &path::PathBuf) -> Vec<String> {
     }
 }
 
-pub fn make_directory_hints(dir: Option<(path::PathBuf, super::Disregard, String)>, inlay: Option<&str>) -> super::Hint {
+pub fn make_directory_hints(dir: Option<(path::PathBuf, super::Disregard, String)>, inlay: Option<String>) -> super::Hint {
     if dir.is_none() {
         return super::Hint::new(vec![], inlay);
     }

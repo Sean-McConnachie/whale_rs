@@ -44,7 +44,7 @@ fn get_executables() -> Vec<String> {
     executables
 }
 
-pub fn make_executables_hint(arg: &str) -> super::Hint<'static> {
+pub fn make_executables_hint(arg: &str) -> super::Hint {
     let mut hint = super::Hint::new(EXECUTABLES.clone(), None);
     hint.closest_match(arg);
     hint
