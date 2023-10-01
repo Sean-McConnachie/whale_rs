@@ -644,6 +644,8 @@ impl InputBuffer {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
     use crate::{config, state};
 
     fn default_program_state() -> state::ProgramState {
@@ -652,8 +654,8 @@ mod tests {
 
     #[test]
     fn test_buffer_insert_char() {
-        let program_state = default_program_state();
-        let mut buffer = super::InputBuffer::init(&program_state);
+        let program_state = Rc::new(RefCell::new(default_program_state()));
+        let mut buffer = super::InputBuffer::init(program_state);
         assert_eq!(buffer.len(), 0);
 
         buffer.insert_char_main_cursor('a');
@@ -673,8 +675,8 @@ mod tests {
 
     #[test]
     fn test_buffer_insert_str() {
-        let program_state = default_program_state();
-        let mut buffer = super::InputBuffer::init(&program_state);
+        let program_state = Rc::new(RefCell::new(default_program_state()));
+        let mut buffer = super::InputBuffer::init(program_state);
         assert_eq!(buffer.len(), 0);
 
         buffer.insert_str_main_cursor("abc");
@@ -691,8 +693,8 @@ mod tests {
 
     #[test]
     fn test_buffer_delete_between_cursors() {
-        let program_state = default_program_state();
-        let mut buffer = super::InputBuffer::init(&program_state);
+        let program_state = Rc::new(RefCell::new(default_program_state()));
+        let mut buffer = super::InputBuffer::init(program_state);
         buffer.insert_str_main_cursor("abcdef");
         buffer.main_cursor.position = 0;
         buffer.secondary_cursor.position = 3;
@@ -706,8 +708,8 @@ mod tests {
 
     #[test]
     fn test_buffer_update() {
-        let program_state = default_program_state();
-        let mut buffer = super::InputBuffer::init(&program_state);
+        let program_state = Rc::new(RefCell::new(default_program_state()));
+        let mut buffer = super::InputBuffer::init(program_state);
         buffer.insert_str_main_cursor("abc def ghi");
         buffer.update();
 
@@ -731,8 +733,8 @@ mod tests {
 
     #[test]
     fn test_buffer_closest_split() {
-        let program_state = default_program_state();
-        let mut buffer = super::InputBuffer::init(&program_state);
+        let program_state = Rc::new(RefCell::new(default_program_state()));
+        let mut buffer = super::InputBuffer::init(program_state);
         buffer.insert_str_main_cursor("abc defg hi jklm");
         buffer.update();
 
@@ -760,8 +762,8 @@ mod tests {
 
     #[test]
     fn test_buffer_jump() {
-        let program_state = default_program_state();
-        let mut buffer = super::InputBuffer::init(&program_state);
+        let program_state = Rc::new(RefCell::new(default_program_state()));
+        let mut buffer = super::InputBuffer::init(program_state);
         buffer.insert_str_main_cursor("abc defg hi jklm");
         buffer.update();
 
@@ -790,7 +792,7 @@ mod tests {
 
     #[test]
     fn test_argument_types() {
-        let mut program_state = default_program_state();
+        let program_state = Rc::new(RefCell::new(default_program_state()));
         let mv_cmd = command::ConfigCommand {
             exe_name: "mv".to_string(),
             exe_to: "move".to_string(),
@@ -830,8 +832,8 @@ mod tests {
                 }
             ],
         };
-        program_state.config.commands = vec![mv_cmd];
-        let mut buffer = super::InputBuffer::init(&program_state);
+        program_state.borrow_mut().config.commands = vec![mv_cmd];
+        let mut buffer = super::InputBuffer::init(program_state);
         buffer.insert_str_main_cursor("mv somewhere tohere");
         buffer.update();
 

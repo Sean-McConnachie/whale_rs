@@ -28,16 +28,16 @@ pub fn short_path(full_path: &path::PathBuf) -> String {
 }
 
 pub fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<fs::File>>>
-where
-    P: AsRef<path::Path>,
+    where
+        P: AsRef<path::Path>,
 {
     let file = fs::File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
 
 pub fn appendable_file<P>(filename: P) -> Result<fs::File, io::Error>
-where
-    P: AsRef<path::Path>,
+    where
+        P: AsRef<path::Path>,
 {
     fs::OpenOptions::new()
         .read(false)
@@ -56,15 +56,72 @@ pub fn first_item(array: &[String], target: &str) -> Option<usize> {
     None
 }
 
-pub fn binary_search<T: Ord>(array: &[T], target: T) -> Option<usize> {
-    let mut low = 0;
-    let mut high = array.len() - 1;
+// https://shane-o.dev/blog/binary-search-rust
+pub fn binary_search<T: Ord>(k: T, items: &[T]) -> Option<usize> {
+    if items.is_empty() {
+        return None;
+    }
+
+    let mut low: usize = 0;
+    let mut high: usize = items.len() - 1;
+
     while low <= high {
-        let mid = (low + high) / 2;
-        match array[mid].cmp(&target) {
-            Ordering::Less => low = mid + 1,
-            Ordering::Equal => return Some(mid),
-            Ordering::Greater => high = mid - 1,
+        let middle = (high + low) / 2;
+        if let Some(current) = items.get(middle) {
+            if *current == k {
+                return Some(middle);
+            }
+            if *current > k {
+                if middle == 0 {
+                    return None;
+                }
+                high = middle - 1
+            }
+            if *current < k {
+                low = middle + 1
+            }
+        }
+    }
+    None
+}
+
+// https://shane-o.dev/blog/binary-search-rust
+pub fn binary_search_with_exclude<T, R: Ord + ?Sized>(
+    k: &R,
+    value_func: impl Fn(&T) -> &R,
+    items: &[T],
+    exclude: &[usize],
+) -> Option<usize> {
+    if items.is_empty() {
+        return None;
+    }
+
+    let mut low: usize = 0;
+    let mut high: usize = items.len() - 1;
+
+    while low <= high {
+        let middle = (high + low) / 2;
+        if let Some(current) = items.get(middle) {
+            if exclude.contains(&middle) { // TODO: Test if BS here is faster
+                if middle == 0 {
+                    return None;
+                }
+                high = middle - 1;
+                continue;
+            }
+            let v = value_func(current);
+            if v == k {
+                return Some(middle);
+            }
+            if v > k {
+                if middle == 0 {
+                    return None;
+                }
+                high = middle - 1
+            }
+            if v < k {
+                low = middle + 1
+            }
         }
     }
     None

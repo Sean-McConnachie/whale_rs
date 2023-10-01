@@ -1,9 +1,10 @@
-use std::cell::{Ref, RefCell};
+use std::cell::RefCell;
 use std::path;
 use std::rc::Rc;
-use crate::{buffer, state};
+use crate::{buffer, state, utils};
 use crate::config::command;
 use crate::hints::Disregard;
+
 
 #[derive(Debug)]
 pub enum Argument<'a> {
@@ -70,7 +71,6 @@ struct Parser<'a> {
     single_argument_count: usize,
     args: Vec<String>,
     flag_skips: Vec<usize>,
-    arg_skips: Vec<usize>,
     arg_flag_skips: Vec<usize>,
 }
 
@@ -83,7 +83,6 @@ impl<'a> Parser<'a> {
             single_argument_count: 0,
             args: vec![],
             flag_skips: vec![],
-            arg_skips: vec![],
             arg_flag_skips: vec![],
         }
     }
@@ -93,7 +92,6 @@ impl<'a> Parser<'a> {
         self.arg_ind = 0;
         self.single_argument_count = 0;
         self.flag_skips.clear();
-        self.arg_skips.clear();
         self.arg_flag_skips.clear();
         self.args = buf
             .arg_locs_iterator()
@@ -149,16 +147,18 @@ impl<'a> Parser<'a> {
         &mut self,
         arg: &str,
     ) -> Option<Argument<'a>> {
-        for (k, arg_flag) in self.current_cmd.arg_flags.iter().enumerate() {
-            if self.arg_flag_skips.contains(&k) {
-                continue;
-            }
-            if arg_flag.flag_name == arg {
-                // arg_ind += 1 because we want to skip the next arg (pair of flag and arg)
-                self.arg_ind += 1;
-                self.arg_flag_skips.push(k);
-                return Some(Argument::ArgFlag(arg_flag));
-            }
+        let k = utils::binary_search_with_exclude(
+            arg,
+            command::FlagArgPair::flag_name,
+            &self.current_cmd.arg_flags,
+            &self.arg_flag_skips,
+        );
+
+        if let Some(k) = k {
+            // arg_ind += 1 because we want to skip the next arg (pair of flag and arg)
+            self.arg_ind += 1;
+            self.arg_flag_skips.push(k);
+            return Some(Argument::ArgFlag(&self.current_cmd.arg_flags[k]));
         }
         None
     }
@@ -168,14 +168,16 @@ impl<'a> Parser<'a> {
         &mut self,
         arg: &str,
     ) -> Option<Argument<'a>> {
-        for (k, flag) in self.current_cmd.flags.iter().enumerate() {
-            if self.flag_skips.contains(&k) {
-                continue;
-            }
-            if flag.flag_name == arg {
-                self.flag_skips.push(k);
-                return Some(Argument::Flag(flag));
-            }
+        let k = utils::binary_search_with_exclude(
+            arg,
+            command::Flag::flag_name,
+            &self.current_cmd.flags,
+            &self.flag_skips,
+        );
+
+        if let Some(k) = k {
+            self.flag_skips.push(k);
+            return Some(Argument::Flag(&self.current_cmd.flags[k]));
         }
         None
     }
@@ -184,24 +186,13 @@ impl<'a> Parser<'a> {
     fn process_args(
         &mut self,
     ) -> Option<Argument<'a>> {
-        for (k, single_arg) in self.current_cmd.args.iter().enumerate() {
-            if self.arg_skips.contains(&k) {
-                continue;
-            }
-            if single_arg.arg_pos == self.single_argument_count {
-                self.single_argument_count += 1;
-                self.arg_skips.push(k);
-                return Some(Argument::Arg(single_arg));
-            }
+        if self.single_argument_count == self.args.len() {
+            return None;
         }
-        None
-    }
 
-    fn safe_pop_front(&mut self) {
-        if self.args.is_empty() {
-            return;
-        }
-        self.args.remove(0);
+        let arg = &self.current_cmd.args[self.single_argument_count];
+        self.single_argument_count += 1;
+        return Some(Argument::Arg(&arg));
     }
 }
 

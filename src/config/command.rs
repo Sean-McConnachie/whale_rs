@@ -50,6 +50,12 @@ pub struct Flag {
     pub execute_after: CommandString,
 }
 
+impl Flag {
+    pub fn flag_name(&self) -> &str {
+        &self.flag_name
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FlagArgPair {
     pub flag_name: String,
@@ -61,6 +67,12 @@ pub struct FlagArgPair {
 
     pub execute_before: CommandString,
     pub execute_after: CommandString,
+}
+
+impl FlagArgPair {
+    pub fn flag_name(&self) -> &str {
+        &self.flag_name
+    }
 }
 
 pub fn read_commands(command_dir: &path::PathBuf) -> Vec<ConfigCommand> {
