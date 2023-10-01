@@ -82,12 +82,13 @@ impl Default for Shell {
 }
 
 /// This determines the hints that will be generated.
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize)]
 pub enum ArgType {
     /// Provides suggestions based on current and surrounding directories.
     Path,
     /// Provides suggestions based on executable list generated at program startup.
     Executable,
     /// Does not provide any suggestions.
+    #[default]
     Text,
 }

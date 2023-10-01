@@ -1,51 +1,86 @@
 use std::cell::{Ref, RefCell};
 use std::path;
 use std::rc::Rc;
-use crate::{buffer, enums, state};
+use crate::{buffer, state};
 use crate::config::command;
 use crate::hints::Disregard;
-
-// #[derive(Debug)]
-// enum Skip<'a> {
-//     None,
-//     Once(Argument<'a>),
-//     Twice(Argument<'a>),
-// }
 
 #[derive(Debug)]
 pub enum Argument<'a> {
     Other,
-    // Flag(&'a command::Flag),
-    // Arg(&'a command::SingleArg),
-    // ArgFlag(&'a command::FlagArgPair),
-    Flag(Ref<'a, command::Flag>),
-    Arg(Ref<'a, command::SingleArg>),
-    ArgFlag(Ref<'a, command::FlagArgPair>),
+    Flag(&'a command::Flag),
+    Arg(&'a command::SingleArg),
+    ArgFlag(&'a command::FlagArgPair),
 }
 
 pub struct BufferParser<'a> {
+    program_state: Rc<RefCell<state::ProgramState>>,
+    current_cmd: command::ConfigCommand,
+    parser: Option<Parser<'a>>,
+}
+
+impl<'a> BufferParser<'a> {
+    pub fn new(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
+        Self {
+            program_state,
+            current_cmd: command::ConfigCommand::default(),
+            parser: None,
+        }
+    }
+
+    pub fn init(&'a mut self, buf: &buffer::InputBuffer) {
+        let first_arg = {
+            if buf.num_args() == 0 {
+                self.current_cmd = command::ConfigCommand::default();
+                self.parser = None;
+                return;
+            }
+            buf.get_buffer_str(buf.arg_locs(0))
+        };
+
+        if !first_arg.is_empty() {
+            if self.parser.is_some() {
+                if first_arg != self.current_cmd.exe_name {
+                    self.current_cmd = command::ConfigCommand::default();
+                    self.parser = None;
+                }
+            }
+            if self.parser.is_none() {
+                for cmd in self.program_state.borrow().config.commands.iter() {
+                    if cmd.exe_name == first_arg {
+                        self.current_cmd = cmd.clone();
+                        let cwd = self.program_state.borrow().current_working_directory.clone();
+                        self.parser = Some(Parser::new(&self.current_cmd, cwd));
+                        break;
+                    }
+                }
+            }
+            if self.parser.is_some() {
+                let cwd = self.program_state.borrow().current_working_directory.clone();
+                self.parser.as_mut().unwrap().init(buf, cwd);
+            }
+        }
+    }
+}
+
+struct Parser<'a> {
+    current_cmd: &'a command::ConfigCommand,
+    cwd: path::PathBuf,
     arg_ind: usize,
     single_argument_count: usize,
-    current_cmd: Option<Ref<'a, command::ConfigCommand>>,
-    current_cmd_ind: Option<usize>,
-    program_state: Rc<RefCell<state::ProgramState>>,
     args: Vec<String>,
-
     flag_skips: Vec<usize>,
     arg_skips: Vec<usize>,
     arg_flag_skips: Vec<usize>,
 }
 
-impl<'a> BufferParser<'a> {
-    pub fn new(
-        program_state: Rc<RefCell<state::ProgramState>>,
-    ) -> Self {
+impl<'a> Parser<'a> {
+    pub fn new(current_cmd: &'a command::ConfigCommand, cwd: path::PathBuf) -> Self {
         Self {
+            current_cmd,
+            cwd,
             arg_ind: 0,
             single_argument_count: 0,
-            current_cmd: None,
-            current_cmd_ind: None,
-            program_state,
             args: vec![],
             flag_skips: vec![],
             arg_skips: vec![],
@@ -53,7 +88,8 @@ impl<'a> BufferParser<'a> {
         }
     }
 
-    pub fn init(&'a mut self, buf: &buffer::InputBuffer) {
+    pub fn init(&mut self, buf: &buffer::InputBuffer, cwd: path::PathBuf) {
+        self.cwd = cwd;
         self.arg_ind = 0;
         self.single_argument_count = 0;
         self.flag_skips.clear();
@@ -63,38 +99,6 @@ impl<'a> BufferParser<'a> {
             .arg_locs_iterator()
             .map(|range| buf.get_buffer_str(range))
             .collect::<Vec<_>>();
-
-        let first_arg = {
-            if buf.num_args() == 0 {
-                self.current_cmd = None;
-                self.current_cmd_ind = None;
-                return;
-            }
-            buf.get_buffer_str(buf.arg_locs(0))
-        };
-
-        if !first_arg.is_empty() {
-            if self.current_cmd.is_some() {
-                if first_arg != self.current_cmd.as_ref().unwrap().exe_name {
-                    self.current_cmd = None;
-                    self.current_cmd_ind = None;
-                }
-            }
-            if self.current_cmd.is_none() {
-                let mut index = None;
-                for (i, cmd) in self.program_state.borrow().config.commands.iter().enumerate() {
-                    if cmd.exe_name == first_arg {
-                        index = Some(i);
-                    }
-                }
-                if let Some(i) = index {
-                    self.current_cmd = Some(
-                        Ref::map(self.program_state.borrow(),
-                                 |s| &s.config.commands[i]));
-                    self.current_cmd_ind = Some(i);
-                }
-            }
-        }
 
         if !self.args.is_empty() { // Skip the first arg if it's empty
             self.args.remove(0);
@@ -116,7 +120,7 @@ impl<'a> BufferParser<'a> {
         let disregard = s.len() - last;
 
         let fp = match fp.is_relative() {
-            true => self.program_state.borrow().current_working_directory.join(fp),
+            true => self.cwd.join(fp),
             false => fp,
         };
 
@@ -144,8 +148,8 @@ impl<'a> BufferParser<'a> {
     fn process_arg_flags(
         &mut self,
         arg: &str,
-    ) -> Option<Argument> {
-        for (k, arg_flag) in self.current_cmd.as_ref().unwrap().arg_flags.iter().enumerate() {
+    ) -> Option<Argument<'a>> {
+        for (k, arg_flag) in self.current_cmd.arg_flags.iter().enumerate() {
             if self.arg_flag_skips.contains(&k) {
                 continue;
             }
@@ -153,9 +157,7 @@ impl<'a> BufferParser<'a> {
                 // arg_ind += 1 because we want to skip the next arg (pair of flag and arg)
                 self.arg_ind += 1;
                 self.arg_flag_skips.push(k);
-                return Some(Argument::ArgFlag(Ref::map(self.program_state.borrow(),
-                                                       |s| &s.config.commands[self.current_cmd_ind.unwrap()].arg_flags[k])));
-                // return Some(Argument::ArgFlag(arg_flag));
+                return Some(Argument::ArgFlag(arg_flag));
             }
         }
         None
@@ -165,16 +167,14 @@ impl<'a> BufferParser<'a> {
     fn process_flags(
         &mut self,
         arg: &str,
-    ) -> Option<Argument> {
-        for (k, flag) in self.current_cmd.as_ref().unwrap().flags.iter().enumerate() {
+    ) -> Option<Argument<'a>> {
+        for (k, flag) in self.current_cmd.flags.iter().enumerate() {
             if self.flag_skips.contains(&k) {
                 continue;
             }
             if flag.flag_name == arg {
                 self.flag_skips.push(k);
-                return Some(Argument::Flag(Ref::map(self.program_state.borrow(),
-                                                    |s| &s.config.commands[self.current_cmd_ind.unwrap()].flags[k])));
-                // return Some(Argument::Flag(flag));
+                return Some(Argument::Flag(flag));
             }
         }
         None
@@ -183,17 +183,15 @@ impl<'a> BufferParser<'a> {
     /// Skip behaviour = Once
     fn process_args(
         &mut self,
-    ) -> Option<Argument> {
-        for (k, single_arg) in self.current_cmd.as_ref().unwrap().args.iter().enumerate() {
+    ) -> Option<Argument<'a>> {
+        for (k, single_arg) in self.current_cmd.args.iter().enumerate() {
             if self.arg_skips.contains(&k) {
                 continue;
             }
             if single_arg.arg_pos == self.single_argument_count {
                 self.single_argument_count += 1;
                 self.arg_skips.push(k);
-                return Some(Argument::Arg(Ref::map(self.program_state.borrow(),
-                                                   |s| &s.config.commands[self.current_cmd_ind.unwrap()].args[k])));
-                // return Some(Argument::Arg(single_arg));
+                return Some(Argument::Arg(single_arg));
             }
         }
         None
@@ -209,7 +207,7 @@ impl<'a> BufferParser<'a> {
 
 /// Note that `arg_ind` plays a large role in this iterator. It is used to keep track of the current
 /// argument that is being processed and is responsible for skipping arguments.
-impl<'a> Iterator for BufferParser<'a> {
+impl<'a> Iterator for Parser<'a> {
     type Item = Argument<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -219,10 +217,6 @@ impl<'a> Iterator for BufferParser<'a> {
 
         if self.arg_ind == self.args.len() {
             return None;
-        }
-
-        if self.current_cmd.is_none() {
-            return Some(Argument::Other);
         }
 
         if self.arg_ind == 0 {
@@ -238,18 +232,21 @@ impl<'a> Iterator for BufferParser<'a> {
 
         // TODO: Use binary searches instead
 
-        let skip: Argument;
-
-        if let Some(arg_flag) = self.process_arg_flags(&arg) {
-            skip = arg_flag;
-        } else if let Some(flag) = self.process_flags(&arg) {
-            skip = flag;
-        } else if let Some(single_arg) = self.process_args() {
-            skip = single_arg;
-        } else {
-            skip = Argument::Other;
+        let rtn = self.process_arg_flags(&arg);
+        if rtn.is_some() {
+            return rtn;
         }
 
-        Some(skip)
+        let rtn = self.process_flags(&arg);
+        if rtn.is_some() {
+            return rtn;
+        }
+
+        let rtn = self.process_args();
+        if rtn.is_some() {
+            return rtn;
+        }
+
+        return Some(Argument::Other);
     }
 }

@@ -7,7 +7,7 @@ use std::path;
 
 pub type CommandString = Option<String>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConfigCommand {
     /// The command name that should trigger this `Command` being used. I.e. `mv`. Note that this
     /// is generated using the file name.
@@ -30,7 +30,7 @@ pub struct ConfigCommand {
     pub arg_flags: Vec<FlagArgPair>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SingleArg {
     pub arg_type: ArgType,
     /// An inlay hint as to what the argument might do. E.g. the "<src>" in `mv <src>` before
@@ -41,7 +41,7 @@ pub struct SingleArg {
     pub arg_pos: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Flag {
     pub flag_name: String,
     pub flag_to: String,
@@ -50,7 +50,7 @@ pub struct Flag {
     pub execute_after: CommandString,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FlagArgPair {
     pub flag_name: String,
     pub flag_to: String,
