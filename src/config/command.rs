@@ -79,7 +79,27 @@ pub fn read_commands(command_dir: &path::PathBuf) -> Vec<ConfigCommand> {
             let file_name = path.file_stem().unwrap().to_str().unwrap();
             let mut command: ConfigCommand = read_config(&path).unwrap();
             command.exe_name = file_name.to_string();
-            command.args.sort_by(|a, b| a.arg_pos.cmp(&b.arg_pos));
+
+            { // `SingleArgs`
+                let main_arg = SingleArg {
+                    arg_type: ArgType::Executable,
+                    arg_hint: "".to_string(),
+                    arg_pos: 0,
+                };
+                command.args.push(main_arg);
+                command.args.sort_by(|a, b| a.arg_pos.cmp(&b.arg_pos));
+                // assert no duplicate arg_pos
+                let mut prev_pos = if command.args.len() > 0 {
+                    command.args[0].arg_pos
+                } else {
+                    0
+                };
+                for arg in command.args.iter().skip(1) {
+                    assert!(arg.arg_pos > prev_pos);
+                    prev_pos = arg.arg_pos;
+                }
+            }
+
             command.flags.sort_by(|a, b| a.flag_name.cmp(&b.flag_name));
             command
                 .arg_flags
