@@ -1,4 +1,4 @@
-use crate::{ansi, buffer, config::theme, state};
+use crate::{ansi, buffer, config::theme};
 use crate::ansi::TerminalXY;
 use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;

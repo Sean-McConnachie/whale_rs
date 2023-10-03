@@ -3,7 +3,7 @@ use std::rc::Rc;
 use whale_rs::input::{InputEvent};
 use whale_rs::buffer::Side;
 use whale_rs::{ansi, buffer, config, execution, gui, input, parser, state};
-use whale_rs::gui::{explorer, GUITrait, ViewType, ViewTypeData};
+use whale_rs::gui::{explorer, GUITrait, ViewType};
 
 fn toggle_view_action(
     view_action: &mut AdditionalViewAction,
@@ -40,7 +40,7 @@ fn update_buffer(
         InputEvent::Backspace => buffer.del_n(Side::Left, 1),
         InputEvent::Delete => buffer.del_n(Side::Right, 1),
         InputEvent::Enter => {
-            let (new_line, status) = execution::run_command(
+            let (new_line, _status) = execution::run_command(
                 program_state.clone(),
                 buffer,
                 arg_parser,

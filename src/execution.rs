@@ -1,8 +1,6 @@
 use std::cell::RefCell;
-use std::process;
-use std::process::exit;
 use std::rc::Rc;
-use crate::{ansi, buffer, enums::Shell, parser, state};
+use crate::{ansi, buffer, parser, state};
 
 // TODO: Add support for execute_before and execute_after
 pub fn run_command(

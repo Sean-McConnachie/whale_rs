@@ -13,7 +13,6 @@ const NUM_COLS: usize = 3;
 
 #[derive(Debug, Clone)]
 struct DirInfo {
-    prev_count: usize,
     scroll: usize,
     dir: path::PathBuf,
     entries: Vec<path::PathBuf>,
@@ -33,7 +32,6 @@ impl DirInfo {
     fn new(dir: path::PathBuf) -> Self {
         let entries = Self::get_entries(&dir);
         Self {
-            prev_count: entries.len(),
             scroll: 0,
             dir,
             entries,
@@ -148,7 +146,8 @@ impl FileInfo {
             // yyyy-mm-dd hh:mm:s
             let t = t.duration_since(std::time::UNIX_EPOCH).unwrap();
             let t = t.as_secs();
-            let t = chrono::NaiveDateTime::from_timestamp(t as i64, 0);
+            let t = chrono::NaiveDateTime::from_timestamp_opt(t as i64, 0);
+            let t = t.unwrap();
             let t = t.format("%Y-%m-%d %H:%M:%S");
             t.to_string()
         }
@@ -167,7 +166,7 @@ impl FileInfo {
         }
     }
 
-    fn draw(&self, start: TerminalXY, size: TerminalXY, theme: &theme::ConfigTheme) {
+    fn draw(&self, start: TerminalXY, theme: &theme::ConfigTheme) {
         let title = &theme.console_main.normal;
         let value = &theme.console_secondary.normal;
         let (x, y) = start;
@@ -207,7 +206,7 @@ impl FinalCol {
     fn draw(&self, start: TerminalXY, size: TerminalXY, theme: &theme::ConfigTheme) {
         match self {
             Self::Dir(dir) => dir.draw(start, size, theme),
-            Self::File(file) => file.draw(start, size, theme)
+            Self::File(file) => file.draw(start, theme)
         }
     }
 }
@@ -255,6 +254,7 @@ impl super::GUITrait for FileExplorerGUI{
         ViewType::Explorer
     }
 
+    #[allow(unused_variables)]
     fn action_before_write(
         &mut self,
         event: InputEvent,
@@ -305,6 +305,7 @@ impl super::GUITrait for FileExplorerGUI{
         action_to_take
     }
 
+    #[allow(unused_variables)]
     fn write_output(
         &mut self,
         event: InputEvent,
@@ -323,5 +324,6 @@ impl super::GUITrait for FileExplorerGUI{
         self.col_rig.draw((self.col_width as u16 * 2, write_from_line), (self.col_width as u16, self.num_rows), theme);
     }
 
+    #[allow(unused_variables)]
     fn clear_output(&mut self, write_from_line: u16) -> () {}
 }

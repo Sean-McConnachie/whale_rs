@@ -67,7 +67,7 @@ impl Shell {
                 c
             }
             Shell::None => {
-                let mut c = process::Command::new("");
+                let c = process::Command::new("");
                 c
             }
         }

@@ -9,13 +9,6 @@ const BUFFER_LENGTH: usize = 8192;
 pub type BufferPosition = usize;
 
 #[derive(Debug, PartialEq)]
-enum Skip {
-    None,
-    Once,
-    Twice,
-}
-
-#[derive(Debug, PartialEq)]
 pub enum Side {
     Left,
     Right,
