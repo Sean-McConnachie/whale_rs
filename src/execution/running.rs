@@ -2,16 +2,34 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use crate::{ansi, buffer, parser, state};
 
+fn reserved_commands(
+    program_state: Rc<RefCell<state::ProgramState>>,
+    buffer: &buffer::InputBuffer,
+) {
+    let first_arg = buffer.first_arg().unwrap_or_default();
+    for (cmd, func) in super::RESERVED_COMMANDS {
+        if &first_arg == cmd {
+            func((program_state.clone(), buffer));
+            break;
+        }
+    }
+}
+
 // TODO: Add support for execute_before and execute_after
 pub fn run_command(
     program_state: Rc<RefCell<state::ProgramState>>,
     buffer: &buffer::InputBuffer,
     arg_parser: &parser::ArgumentParser,
-) -> (Option<u16>, Option<i32>) {
+) -> (Option<u16>, Option<super::StatusCode>) {
+    reserved_commands(
+        program_state.clone(),
+        buffer,
+    );
+
     if buffer.len() == 0 { return (None, Some(-1)); }
 
     // TODO: Add a mutable `current_shell`.
-    let mut command = program_state.borrow().config.core.default_shell.to_exec();
+    let mut command = program_state.borrow().current_shell.to_exec();
 
     let args = buffer.arg_locs_iterator()
         .map(|range| buffer.get_buffer_str(range))
@@ -61,7 +79,6 @@ pub fn run_command(
 
     crossterm::terminal::enable_raw_mode().unwrap();
 
-    // TODO: Terminal position updates
     let new_pos = ansi::cursor_pos().unwrap();
 
     return (Some(new_pos.1), exit.code());

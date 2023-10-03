@@ -532,7 +532,7 @@ mod tests {
     use crate::{config, state};
 
     fn default_program_state() -> state::ProgramState {
-        state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new())
+        state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new(), enums::Shell::default())
     }
 
     #[test]

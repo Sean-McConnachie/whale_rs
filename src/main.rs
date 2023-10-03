@@ -40,7 +40,7 @@ fn update_buffer(
         InputEvent::Backspace => buffer.del_n(Side::Left, 1),
         InputEvent::Delete => buffer.del_n(Side::Right, 1),
         InputEvent::Enter => {
-            let (new_line, _status) = execution::run_command(
+            let (new_line, _status) = execution::running::run_command(
                 program_state.clone(),
                 buffer,
                 arg_parser,
@@ -122,18 +122,7 @@ fn update_buffer(
         }
 
         _ => ()
-        // InputEvent::CtrlD => buffer.ctrl_d(),
-        // InputEvent::CtrlS => buffer.ctrl_s(),
-        // InputEvent::CtrlT => buffer.ctrl_t(),
-        //
-        // InputEvent::ArrowUp => buffer.up(),
-        // InputEvent::ArrowDown => buffer.down(),
-        //
-        // InputEvent::ShiftArrowUp => buffer.shift_up(),
-        // InputEvent::ShiftArrowDown => buffer.shift_down(),
-        //
-        //
-        // InputEvent::Other(key) => buffer.other(key),
+        // TODO: History
     }
 
     buffer.update();
@@ -142,11 +131,20 @@ fn update_buffer(
     rtn
 }
 
-fn execute_action(action: gui::ActionToExecute, buffer: &mut buffer::InputBuffer) {
+fn execute_action(
+    action: gui::ActionToExecute,
+    buffer: &mut buffer::InputBuffer,
+    arg_parser: &mut parser::ArgumentParser) {
     match action {
         gui::ActionToExecute::SetClosestMatch(s) => {
             let curr_arg = buffer.get_curr_arg();
             buffer.set_closest_match_on_hint(curr_arg, s);
+        }
+        gui::ActionToExecute::SetBuffer(s) => {
+            buffer.clear_all();
+            buffer.insert_str_main_cursor(&s);
+            buffer.update();
+            buffer.update_arguments(arg_parser);
         }
     }
 }
@@ -210,6 +208,7 @@ fn runtime_loop(
             Err(_) => continue
         };
         if input == InputEvent::CtrlC {
+            ansi::move_down(1);
             break;
         }
 
@@ -227,7 +226,7 @@ fn runtime_loop(
 
         if let gui::ActionToTake::WriteBuffer(action) = action_to_take {
             if let gui::ActionType::Other(other) = action {
-                execute_action(other, &mut buffer);
+                execute_action(other, &mut buffer, &mut argument_parser);
             } else {
                 let view = update_buffer(
                     input.clone(),
@@ -263,8 +262,9 @@ fn main() {
         let config = config::read_or_create_all_configs();
 
         let current_working_directory = std::env::current_dir().unwrap();
+        let default_shell = config.core.default_shell.clone();
 
-        state::ProgramState::init(config, current_working_directory)
+        state::ProgramState::init(config, current_working_directory, default_shell)
     };
     let program_state = Rc::new(RefCell::new(program_state));
     let argument_parser = parser::ArgumentParser::new(program_state.clone());

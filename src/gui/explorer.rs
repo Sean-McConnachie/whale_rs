@@ -3,7 +3,7 @@ use std::path;
 use std::rc::Rc;
 use crate::ansi::TerminalXY;
 use crate::buffer::InputBuffer;
-use crate::gui::{ActionToTake, ActionType, ViewType};
+use crate::gui::{ActionToExecute, ActionToTake, ActionType, ViewType};
 use crate::gui::terminal::CursorPos;
 use crate::input::InputEvent;
 use crate::{ansi, state};
@@ -249,7 +249,7 @@ impl FileExplorerGUI {
     }
 }
 
-impl super::GUITrait for FileExplorerGUI{
+impl super::GUITrait for FileExplorerGUI {
     fn view_type(&self) -> ViewType {
         ViewType::Explorer
     }
@@ -301,6 +301,21 @@ impl super::GUITrait for FileExplorerGUI{
                 action_to_take = ActionToTake::BlockBuffer
             }
             _ => {}
+        }
+        if action_to_take == ActionToTake::BlockBuffer {
+            let path = self.col_mid.get_entry().clone();
+            let cmd = if path.is_file() {
+                let fname = path.file_name().unwrap().to_str().unwrap();
+                let p = path.parent().unwrap();
+                #[cfg(target_os = "windows")]
+                { format!("cd \"{}\"", p.to_str().unwrap()) }
+                #[cfg(target_os = "linux")]
+                { format!("cd \"{}\" && file {}", p.to_str().unwrap(), fname) }
+            } else {
+                format!("cd \"{}\"", path.to_str().unwrap())
+            };
+            let path = path.to_str().unwrap();
+            action_to_take = ActionToTake::WriteBuffer(ActionType::Other(ActionToExecute::SetBuffer(cmd)))
         }
         action_to_take
     }

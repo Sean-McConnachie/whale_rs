@@ -32,6 +32,7 @@ pub enum ActionType {
 
 #[derive(Debug, PartialEq)]
 pub enum ActionToExecute {
+    SetBuffer(String),
     SetClosestMatch(String),
 }
 

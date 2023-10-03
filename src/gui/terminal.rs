@@ -7,7 +7,6 @@ use crate::gui::{ActionToTake, ActionType};
 
 use super::GUITrait;
 
-// TODO: Fix inlay hints
 // TODO: Add ConfigCommand structs to executables for hints
 
 pub type CursorPos = (u16, u16);

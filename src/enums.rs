@@ -1,4 +1,5 @@
 use std::process;
+use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 #[cfg(target_os = "windows")]
@@ -35,6 +36,19 @@ impl Shell {
 impl Default for Shell {
     fn default() -> Self {
         Self::CommandPrompt
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl FromStr for Shell {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "cmd" => Ok(Self::CommandPrompt),
+            "ps" => Ok(Self::PowerShell),
+            _ => Err(()),
+        }
     }
 }
 
@@ -78,6 +92,20 @@ impl Shell {
 impl Default for Shell {
     fn default() -> Self {
         Self::Bash
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl FromStr for Shell {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "bash" => Ok(Self::Bash),
+            "zsh" => Ok(Self::Zsh),
+            "fish" => Ok(Self::Fish),
+            _ => Err(()),
+        }
     }
 }
 
