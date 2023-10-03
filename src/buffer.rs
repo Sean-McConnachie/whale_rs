@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use crate::{config::command, enums, hints, state};
+use crate::{config::command, enums, hints, parser, state};
 use std::path;
 use std::rc::Rc;
 use crate::hints::Disregard;
@@ -63,7 +63,6 @@ pub struct InputBuffer {
     quote_locs: Vec<BufferPosition>,
 
     program_state: Rc<RefCell<state::ProgramState>>,
-    current_command: Option<command::ConfigCommand>,
     argument_hints: Vec<(enums::ArgType, hints::Hint)>,
 
     curr_arg: usize,
@@ -79,14 +78,9 @@ impl InputBuffer {
             split_locs: Vec::new(),
             quote_locs: Vec::new(),
             argument_hints: Vec::new(),
-            current_command: None,
             program_state,
             curr_arg: 0,
         }
-    }
-
-    pub fn get_current_command(&self) -> Option<&command::ConfigCommand> {
-        self.current_command.as_ref()
     }
 
     pub fn get_buffer(&self) -> &[char] {
@@ -180,8 +174,11 @@ impl InputBuffer {
         }
     }
 
-    // TODO: Clean all of this rubbish up
-    fn arg_to_path(&self, s: &str) -> Option<(path::PathBuf, Disregard, String)> {
+    // TODO: Fix the `Hint`ing system... These return types are just stupid
+    fn arg_to_path(
+        &self,
+        s: &str,
+    ) -> Option<(path::PathBuf, Disregard, String)> {
         let fp = path::PathBuf::from(s);
 
         let last = if !s.is_empty() {
@@ -216,157 +213,68 @@ impl InputBuffer {
         None
     }
 
-    fn process_arg_flags(
+    fn process_hint<T>(
         &mut self,
-        i: usize,
-        arg: &str,
-        cmd: &command::ConfigCommand,
-        arg_flag_skips: &mut Vec<usize>,
-    ) -> Skip {
-        let mut skip = Skip::None;
-        for (k, arg_flag) in cmd.arg_flags.iter().enumerate() {
-            if arg_flag_skips.contains(&k) {
-                continue;
-            }
-            if arg_flag.flag_name == arg {
-                if self.out_of_range_or_different(i, enums::ArgType::Text) {
-                    let hint = hints::Hint::default();
-                    self.push_or_replace(i, (enums::ArgType::Text, hint));
+        ind: usize,
+        arg_type_func: impl Fn(&T) -> enums::ArgType,
+        inlay_func: impl Fn(&T) -> &str,
+        argument: &T,
+    ) {
+        let arg_type = arg_type_func(argument);
+        let arg = self.get_buffer_str(self.arg_locs(ind));
+        if self.out_of_range_or_different(ind, arg_type) {
+            let hint = match arg_type {
+                enums::ArgType::Executable => {
+                    hints::executables::make_executables_hint(&arg)
                 }
-                if self.out_of_range_or_different(i + 1, arg_flag.arg_type.clone()) {
-                    let hint = match arg_flag.arg_type {
-                        enums::ArgType::Executable => {
-                            hints::executables::make_executables_hint(arg)
-                        }
-                        enums::ArgType::Path => hints::filesystem::make_directory_hints(
-                            self.arg_to_path(&arg),
-                            Some(arg_flag.arg_hint.to_string()),
-                        ),
-                        enums::ArgType::Text => hints::Hint::default(),
-                    };
-                    self.push_or_replace(i + 1, (arg_flag.arg_type.clone(), hint));
-                } else if arg_flag.arg_type == enums::ArgType::Path {
-                    hints::filesystem::update_directory_hints(
-                        &self.arg_to_path(&arg),
-                        &mut self.argument_hints[i + 1].1,
-                    );
-                } else if arg_flag.arg_type == enums::ArgType::Executable {
-                    hints::executables::update_executables_hint(
-                        arg,
-                        &mut self.argument_hints[i + 1].1,
-                    );
-                }
-                skip = Skip::Twice;
-                arg_flag_skips.push(k);
-                break;
+                enums::ArgType::Path => hints::filesystem::make_directory_hints(
+                    self.arg_to_path(&arg),
+                    Some(inlay_func(argument).to_string()),
+                ),
+                enums::ArgType::Text => hints::Hint::default(),
+            };
+            self.push_or_replace(ind, (arg_type, hint));
+        } else {
+            if arg_type == enums::ArgType::Path {
+                hints::filesystem::update_directory_hints(
+                    &self.arg_to_path(&arg),
+                    &mut self.argument_hints[ind].1,
+                );
+            } else if arg_type == enums::ArgType::Executable {
+                hints::executables::update_executables_hint(
+                    &arg,
+                    &mut self.argument_hints[ind].1,
+                );
             }
         }
-        skip
     }
 
-    fn process_flags(
-        &mut self,
-        i: usize,
-        arg: &str,
-        cmd: &command::ConfigCommand,
-        flag_skips: &mut Vec<usize>,
-    ) -> Skip {
-        for (k, flag) in cmd.flags.iter().enumerate() {
-            if flag_skips.contains(&k) {
-                continue;
-            }
-            if flag.flag_name == arg {
-                if self.out_of_range_or_different(i, enums::ArgType::Text) {
-                    self.push_or_replace(i, (enums::ArgType::Text, hints::Hint::default()));
-                }
-                flag_skips.push(k);
-                return Skip::Once;
-            }
+    pub fn first_arg(&self) -> Option<String> {
+        if self.num_args() > 0 {
+            Some(self.get_buffer_str(self.arg_locs(0)))
+        } else {
+            None
         }
-        Skip::None
     }
 
-    fn process_args(
-        &mut self,
-        i: usize,
-        arg: &str,
-        cmd: &command::ConfigCommand,
-        arg_c: &mut usize,
-        arg_skips: &mut Vec<usize>,
-    ) -> Skip {
-        for (k, single_arg) in cmd.args.iter().enumerate() {
-            if arg_skips.contains(&k) {
-                continue;
-            }
-            if single_arg.arg_pos == *arg_c {
-                if self.out_of_range_or_different(i, single_arg.arg_type.clone()) {
-                    let hint = match single_arg.arg_type {
-                        enums::ArgType::Executable => {
-                            hints::executables::make_executables_hint(arg)
-                        }
-                        enums::ArgType::Path => hints::filesystem::make_directory_hints(
-                            self.arg_to_path(&arg),
-                            Some(single_arg.arg_hint.to_string()),
-                        ),
-                        enums::ArgType::Text => hints::Hint::default(),
-                    };
-                    self.push_or_replace(i, (single_arg.arg_type.clone(), hint));
-                } else {
-                    if single_arg.arg_type == enums::ArgType::Path {
-                        hints::filesystem::update_directory_hints(
-                            &self.arg_to_path(&arg),
-                            &mut self.argument_hints[i].1,
-                        );
-                    } else if single_arg.arg_type == enums::ArgType::Executable {
-                        hints::executables::update_executables_hint(
-                            arg,
-                            &mut self.argument_hints[i].1,
-                        );
-                    }
-                }
-                *arg_c += 1;
-                arg_skips.push(k);
-                return Skip::Once;
-            }
-        }
-        Skip::None
-    }
+    pub fn update_arguments(&mut self, arg_parser: &parser::ArgumentParser) {
+        let args = self.arg_locs_iterator()
+            .map(|range| self.get_buffer_str(range))
+            .collect::<Vec<_>>();
 
-    fn update_arguments(&mut self) {
-        let first_arg = {
-            if self.num_args() == 0 {
-                self.current_command = None;
-                return;
-            }
-            self.get_buffer_str(self.arg_locs(0))
-        };
 
+        self.argument_hints.clear();
         if self.out_of_range_or_different(0, enums::ArgType::Executable) {
-            let hint = hints::executables::make_executables_hint(&first_arg);
+            let hint = hints::executables::make_executables_hint(arg_parser.first_arg());
             self.push_or_replace(0, (enums::ArgType::Executable, hint));
         } else {
             hints::executables::update_executables_hint(
-                &first_arg,
+                arg_parser.first_arg(),
                 &mut self.argument_hints[0].1,
             );
         }
 
-        if !first_arg.is_empty() {
-            if self.current_command.is_some() {
-                if first_arg != self.current_command.as_ref().unwrap().exe_name {
-                    self.current_command = None;
-                }
-            }
-            if self.current_command.is_none() {
-                for cmd in &self.program_state.borrow().config.commands {
-                    if cmd.exe_name == first_arg {
-                        self.current_command = Some(cmd.clone()); // TODO: Try get rid of this clone
-                    }
-                }
-            }
-        }
-
-        if self.current_command.is_none() {
+        if !arg_parser.has_command() {
             for arg_i in 1..self.num_args() {
                 let arg = self.get_buffer_str(self.arg_locs(arg_i));
                 let path = self.arg_to_path(&arg);
@@ -380,61 +288,45 @@ impl InputBuffer {
             return;
         }
 
-        let cmd = self.current_command.as_ref().unwrap().clone(); // TODO: Get rid of this clone
-
-        let mut flag_skips = Vec::with_capacity(cmd.flags.len());
-        let mut arg_skips = Vec::with_capacity(cmd.args.len());
-        let mut arg_flag_skips = Vec::with_capacity(cmd.arg_flags.len());
-
-        let mut skip = Skip::None;
-        let mut arg_c = 1;
-
-        let iter = self
-            .arg_locs_iterator()
-            .map(|range| self.get_buffer_str(range))
-            .collect::<Vec<_>>();
-
-
-        'outer: for (i, arg) in iter.iter().enumerate().skip(1)
-        {
-            if skip == Skip::Once {
-                skip = Skip::None;
-                continue;
+        let mut iter = parser::ArgumentIterator::new(&arg_parser);
+        iter.reinit(args);
+        let mut i = 0;
+        for arg in iter {
+            match arg {
+                parser::Argument::Other => {
+                    if self.out_of_range_or_different(i, enums::ArgType::Text) {
+                        let hint = hints::Hint::default();
+                        self.push_or_replace(i, (enums::ArgType::Text, hint));
+                    }
+                }
+                parser::Argument::ArgFlag(arg_flag) => {
+                    if self.out_of_range_or_different(i, enums::ArgType::Text) {
+                        let hint = hints::Hint::default();
+                        self.push_or_replace(i, (enums::ArgType::Text, hint));
+                    }
+                    i += 1;
+                    self.process_hint(
+                        i,
+                        command::FlagArgPair::arg_type,
+                        command::FlagArgPair::arg_hint,
+                        unsafe { &*arg_flag },
+                    )
+                }
+                parser::Argument::Flag(_flag) => {
+                    if self.out_of_range_or_different(i, enums::ArgType::Text) {
+                        self.push_or_replace(i, (enums::ArgType::Text, hints::Hint::default()));
+                    }
+                }
+                parser::Argument::Arg(arg) => {
+                    self.process_hint(
+                        i,
+                        command::SingleArg::arg_type,
+                        command::SingleArg::arg_hint,
+                        unsafe { &*arg },
+                    )
+                }
             }
-            // TODO: Use binary searches instead
-            skip = Self::process_arg_flags(self, i, &arg, &cmd, &mut arg_flag_skips);
-
-            if skip == Skip::Once {
-                skip = Skip::None;
-                continue 'outer;
-            } else if skip == Skip::Twice {
-                skip = Skip::Once;
-                continue 'outer;
-            }
-
-            skip = Self::process_flags(self, i, &arg, &cmd, &mut flag_skips);
-
-            if skip == Skip::Once {
-                skip = Skip::None;
-                continue 'outer;
-            } else if skip == Skip::Twice {
-                skip = Skip::Once;
-                continue 'outer;
-            }
-
-            skip = Self::process_args(self, i, &arg, &cmd, &mut arg_c, &mut arg_skips);
-
-            if skip == Skip::Once {
-                skip = Skip::None;
-                continue 'outer;
-            } else if skip == Skip::Twice {
-                skip = Skip::Once;
-                continue 'outer;
-            }
-
-            if self.out_of_range_or_different(i, enums::ArgType::Text) {
-                self.push_or_replace(i, (enums::ArgType::Text, hints::Hint::default()));
-            }
+            i += 1;
         }
     }
 
@@ -464,7 +356,6 @@ impl InputBuffer {
         if self.split_locs.len() % 2 == 1 {
             self.split_locs.push(self.input_length);
         }
-        self.update_arguments();
     }
 
     /// Returns index of closest split_loc
@@ -636,7 +527,6 @@ impl InputBuffer {
         self.quote_locs.clear();
         self.split_locs.clear();
         self.argument_hints.clear();
-        self.current_command = None;
         self.main_cursor.position = 0;
         self.secondary_cursor.active = false;
     }

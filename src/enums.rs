@@ -82,7 +82,7 @@ impl Default for Shell {
 }
 
 /// This determines the hints that will be generated.
-#[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Default, Copy, Serialize, Deserialize)]
 pub enum ArgType {
     /// Provides suggestions based on current and surrounding directories.
     Path,

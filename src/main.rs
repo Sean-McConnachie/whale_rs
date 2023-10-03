@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use whale_rs::input::{InputEvent};
 use whale_rs::buffer::Side;
-use whale_rs::{ansi, buffer, config, gui, input, state};
+use whale_rs::{ansi, buffer, config, gui, input, parser, state};
 use whale_rs::gui::{explorer, GUITrait, ViewType, ViewTypeData};
 
 fn toggle_view_action(
@@ -31,6 +31,7 @@ fn update_buffer(
     buffer: &mut buffer::InputBuffer,
     term_size: &mut ansi::TerminalXY,
     terminal_gui: &mut gui::terminal::TerminalGUI,
+    arg_parser: &mut parser::ArgumentParser,
 ) -> AdditionalViewAction {
     let mut rtn = AdditionalViewAction::None;
     match input {
@@ -127,7 +128,10 @@ fn update_buffer(
         //
         // InputEvent::Other(key) => buffer.other(key),
     }
+
     buffer.update();
+    arg_parser.reinit(buffer.first_arg());
+    buffer.update_arguments(arg_parser);
     rtn
 }
 
@@ -178,6 +182,7 @@ fn runtime_loop(
     program_state: Rc<RefCell<state::ProgramState>>,
     mut buffer: buffer::InputBuffer,
     mut terminal_gui: gui::terminal::TerminalGUI,
+    mut argument_parser: parser::ArgumentParser,
 ) {
     ansi::erase_screen();
 
@@ -218,7 +223,13 @@ fn runtime_loop(
             if let gui::ActionType::Other(other) = action {
                 execute_action(other, &mut buffer);
             } else {
-                let view = update_buffer(input.clone(), &mut buffer, &mut term_size, &mut terminal_gui);
+                let view = update_buffer(
+                    input.clone(),
+                    &mut buffer,
+                    &mut term_size,
+                    &mut terminal_gui,
+                    &mut argument_parser,
+                );
                 update_view(view, &mut terminal_gui, write_from_line, &program_state);
 
                 terminal_gui.action_before_write(
@@ -249,10 +260,11 @@ fn main() {
         state::ProgramState::init(config, current_working_directory)
     };
     let program_state = Rc::new(RefCell::new(program_state));
+    let argument_parser = parser::ArgumentParser::new(program_state.clone());
     let buffer = buffer::InputBuffer::init(program_state.clone());
     let terminal_gui = gui::terminal::TerminalGUI::init(program_state.clone());
 
     crossterm::terminal::enable_raw_mode().unwrap();
-    runtime_loop(program_state, buffer, terminal_gui);
+    runtime_loop(program_state, buffer, terminal_gui, argument_parser);
     crossterm::terminal::disable_raw_mode().unwrap();
 }

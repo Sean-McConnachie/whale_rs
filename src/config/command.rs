@@ -41,6 +41,16 @@ pub struct SingleArg {
     pub arg_pos: usize,
 }
 
+impl SingleArg {
+    pub fn arg_type(&self) -> ArgType {
+        self.arg_type
+    }
+
+    pub fn arg_hint(&self) -> &str {
+        &self.arg_hint
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Flag {
     pub flag_name: String,
@@ -72,6 +82,14 @@ pub struct FlagArgPair {
 impl FlagArgPair {
     pub fn flag_name(&self) -> &str {
         &self.flag_name
+    }
+
+    pub fn arg_type(&self) -> ArgType {
+        self.arg_type
+    }
+
+    pub fn arg_hint(&self) -> &str {
+        &self.arg_hint
     }
 }
 
