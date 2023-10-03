@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use whale_rs::input::{InputEvent};
 use whale_rs::buffer::Side;
-use whale_rs::{ansi, buffer, config, gui, input, parser, state};
+use whale_rs::{ansi, buffer, config, execution, gui, input, parser, state};
 use whale_rs::gui::{explorer, GUITrait, ViewType, ViewTypeData};
 
 fn toggle_view_action(
@@ -28,6 +28,7 @@ enum AdditionalViewAction {
 
 fn update_buffer(
     input: InputEvent,
+    program_state: &Rc<RefCell<state::ProgramState>>,
     buffer: &mut buffer::InputBuffer,
     term_size: &mut ansi::TerminalXY,
     terminal_gui: &mut gui::terminal::TerminalGUI,
@@ -39,9 +40,15 @@ fn update_buffer(
         InputEvent::Backspace => buffer.del_n(Side::Left, 1),
         InputEvent::Delete => buffer.del_n(Side::Right, 1),
         InputEvent::Enter => {
-            // TODO: Run
-            // buffer.enter();
-            // command_run = true;
+            let (new_line, status) = execution::run_command(
+                program_state.clone(),
+                buffer,
+                arg_parser,
+            );
+            if let Some(line) = new_line {
+                terminal_gui.set_current_line(line);
+            }
+            buffer.clear_all();
         }
         InputEvent::Tab => {
             let hints = buffer.get_argument_hints();
@@ -148,7 +155,7 @@ fn update_view(
     view: AdditionalViewAction,
     terminal_gui: &mut gui::terminal::TerminalGUI,
     write_from_line: u16,
-    program_state: &Rc<RefCell<state::ProgramState>>
+    program_state: &Rc<RefCell<state::ProgramState>>,
 ) {
     match view {
         AdditionalViewAction::None => (),
@@ -169,7 +176,7 @@ fn update_view(
                 }
                 ViewType::Explorer => {
                     let explorer = explorer::FileExplorerGUI::init(program_state.clone());
-                   Box::new(explorer) as Box<dyn GUITrait>
+                    Box::new(explorer) as Box<dyn GUITrait>
                 }
             };
             terminal_gui.set_using(Some(trait_obj));
@@ -188,7 +195,6 @@ fn runtime_loop(
 
     let mut term_size = (1, 1);
 
-    let mut view_type_data = ViewTypeData::None;
     let mut iter: u128 = 0;
     let mut positions;
     let mut write_from_line;
@@ -225,6 +231,7 @@ fn runtime_loop(
             } else {
                 let view = update_buffer(
                     input.clone(),
+                    &program_state,
                     &mut buffer,
                     &mut term_size,
                     &mut terminal_gui,

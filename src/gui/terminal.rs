@@ -52,6 +52,10 @@ impl TerminalGUI
         }
     }
 
+    pub fn set_current_line(&mut self, line: u16) {
+        self.current_line = line;
+    }
+
     pub fn set_using(&mut self, view: Option<Box<dyn GUITrait>>) {
         self.additional_view = view;
     }
@@ -214,8 +218,8 @@ impl TerminalGUI
         term_size: TerminalXY,
         cursor_position: CursorPos,
     ) {
-        ansi::erase_screen();
         ansi::move_to((0, self.current_line));
+        ansi::erase_screen_from_cursor();
 
         self.output_path();
         self.output_buffer(buf);
@@ -260,10 +264,11 @@ impl TerminalGUI
             }
         };
 
+        let arg_pos = pos_to_xy(upto_curr_arg as u16, term_size);
         (
             pos_to_xy(upto_cursor as u16, term_size),
             pos_to_xy(upto_end as u16, term_size),
-            pos_to_xy(upto_curr_arg as u16, term_size)
+            (arg_pos.0, arg_pos.1 + self.current_line),
         )
     }
 
