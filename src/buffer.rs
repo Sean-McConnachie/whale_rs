@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use crate::{config::command, enums, hints, parser, state};
+use crate::{config::command, enums, hints, history, parser, state};
 use std::path;
 use std::rc::Rc;
 use crate::hints::Disregard;
@@ -58,11 +58,14 @@ pub struct InputBuffer {
     program_state: Rc<RefCell<state::ProgramState>>,
     argument_hints: Vec<(enums::ArgType, hints::Hint)>,
 
+    history: history::History,
+
     curr_arg: usize,
 }
 
 impl InputBuffer {
     pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
+        let history = history::History::init(program_state.clone());
         Self {
             buffer: ['\0'; BUFFER_LENGTH],
             input_length: 0,
@@ -71,6 +74,7 @@ impl InputBuffer {
             split_locs: Vec::new(),
             quote_locs: Vec::new(),
             argument_hints: Vec::new(),
+            history,
             program_state,
             curr_arg: 0,
         }
@@ -520,6 +524,37 @@ impl InputBuffer {
         self.argument_hints.clear();
         self.main_cursor.position = 0;
         self.secondary_cursor.active = false;
+    }
+
+    pub fn history_older(&mut self) {
+        if let Some(older) = self
+            .history
+            .get_older_history(&self.buffer[..self.input_length])
+        {
+            for (i, c) in older.chars().enumerate() {
+                self.buffer[i] = c;
+            }
+            self.input_length = older.len();
+            self.main_cursor.position = older.len();
+            self.secondary_cursor.active = false;
+        }
+    }
+
+    pub fn history_newer(&mut self) {
+        if let Some(newer) = self.history.get_newer_history() {
+            for (i, c) in newer.chars().enumerate() {
+                self.buffer[i] = c;
+            }
+            self.input_length = newer.len();
+            self.main_cursor.position = newer.len();
+            self.secondary_cursor.active = false;
+        }
+    }
+
+    pub fn history_push_current(&mut self) {
+        if self.len() == 0 { return; }
+        let cmd = self.get_buffer().iter().collect::<String>();
+        self.history.add_to_history(&cmd).unwrap();
     }
 }
 

@@ -1,5 +1,8 @@
 use std::{fs, io::{self, Write}, path, time};
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::config::history;
+use crate::state;
 
 #[derive(Debug)]
 struct HistoryEntry {
@@ -41,6 +44,7 @@ impl HistoryEntry {
     }
 }
 
+#[derive(Debug)]
 pub struct History {
     history_iter: usize,
     history_file: fs::File,
@@ -49,10 +53,15 @@ pub struct History {
 }
 
 impl History {
-    pub fn init(history_config: &history::ConfigHistory) -> Self {
-        let history = Self::parse_history_file(&history_config.history_fp).unwrap();
-        let history = Self::reduce_history_file(&history_config, history).unwrap();
-        let history_file = crate::utils::appendable_file(&history_config.history_fp).unwrap();
+    pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
+        let p_state = program_state.borrow();
+        let history_config = &p_state.config.history;
+        let history_fp = p_state.config.core.data_dir.join(&history_config.history_fp);
+
+        let history = Self::parse_history_file(&history_fp).unwrap();
+        let history = Self::reduce_history_file(
+            &history_fp, history_config.max_file_size_bytes, history).unwrap();
+        let history_file = crate::utils::appendable_file(&history_fp).unwrap();
 
         Self {
             history_file,
@@ -65,14 +74,15 @@ impl History {
     /// This function is expensive.
     /// This should be fine, since it will only run when the history file size has been exceeded.
     fn reduce_history_file(
-        history_config: &history::ConfigHistory,
+        history_fp: &path::PathBuf,
+        max_file_size_bytes: u64,
         history: Vec<HistoryEntry>,
     ) -> Result<Vec<HistoryEntry>, io::Error> {
-        if !history_config.history_fp.exists() {
+        if !history_fp.exists() {
             panic!("Function called in bad order.")
         }
 
-        if fs::metadata(&history_config.history_fp)?.len() < history_config.max_file_size_bytes {
+        if fs::metadata(&history_fp)?.len() < max_file_size_bytes {
             return Ok(history);
         }
 
@@ -90,7 +100,7 @@ impl History {
             }
         }
 
-        let temp_file_path = format!("{}.temp", history_config.history_fp.to_str().unwrap());
+        let temp_file_path = format!("{}.temp", history_fp.to_str().unwrap());
         let mut temp_file = fs::OpenOptions::new()
             .read(false)
             .append(true)
@@ -109,10 +119,10 @@ impl History {
         }
         drop(temp_file);
 
-        fs::remove_file(&history_config.history_fp)?;
-        fs::rename(&temp_file_path, &history_config.history_fp)?;
+        fs::remove_file(&history_fp)?;
+        fs::rename(&temp_file_path, &history_fp)?;
 
-        Self::parse_history_file(&history_config.history_fp)
+        Self::parse_history_file(&history_fp)
     }
 
     fn parse_history_file(history_fp: &path::PathBuf) -> Result<Vec<HistoryEntry>, io::Error> {

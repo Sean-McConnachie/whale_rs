@@ -48,6 +48,7 @@ fn update_buffer(
             if let Some(line) = new_line {
                 terminal_gui.set_current_line(line);
             }
+            buffer.history_push_current();
             buffer.clear_all();
         }
         InputEvent::Tab => {
@@ -64,6 +65,13 @@ fn update_buffer(
         InputEvent::CtrlBackspace => buffer.del_jump(Side::Left),
         InputEvent::CtrlDelete => buffer.del_jump(Side::Left),
         InputEvent::CtrlC => unreachable!("This should be handled outside of the match statement!"),
+
+        InputEvent::ArrowUp => {
+            buffer.history_older();
+        }
+        InputEvent::ArrowDown => {
+            buffer.history_newer();
+        }
 
         InputEvent::ArrowLeft => {
             buffer.main_cur_set(buffer.move_n(Side::Left, 1, buffer.main_cur()));
