@@ -198,6 +198,7 @@ fn runtime_loop(
     let mut write_from_line;
     let mut input;
     let mut action_to_take;
+
     loop {
         if iter == 1 {
             term_size = crossterm::terminal::size().unwrap();
@@ -207,6 +208,7 @@ fn runtime_loop(
             Ok(inp) => inp,
             Err(_) => continue
         };
+
         if input == InputEvent::CtrlC {
             ansi::move_down(1);
             break;

@@ -255,19 +255,17 @@ impl InputBuffer {
             .map(|range| self.get_buffer_str(range))
             .collect::<Vec<_>>();
 
-
-        self.argument_hints.clear();
-        if self.out_of_range_or_different(0, enums::ArgType::Executable) {
-            let hint = hints::executables::make_executables_hint(arg_parser.first_arg());
-            self.push_or_replace(0, (enums::ArgType::Executable, hint));
-        } else {
-            hints::executables::update_executables_hint(
-                arg_parser.first_arg(),
-                &mut self.argument_hints[0].1,
-            );
-        }
-
         if !arg_parser.has_command() {
+            if self.out_of_range_or_different(0, enums::ArgType::Executable) {
+                let hint = hints::executables::make_executables_hint(arg_parser.first_arg());
+                self.push_or_replace(0, (enums::ArgType::Executable, hint));
+            } else {
+                hints::executables::update_executables_hint(
+                    arg_parser.first_arg(),
+                    &mut self.argument_hints[0].1,
+                );
+            }
+
             for arg_i in 1..self.num_args() {
                 let arg = self.get_buffer_str(self.arg_locs(arg_i));
                 let path = self.arg_to_path(&arg);
@@ -529,7 +527,7 @@ impl InputBuffer {
 mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
-    use crate::{config, state};
+    use crate::{config, parser, state};
 
     fn default_program_state() -> state::ProgramState {
         state::ProgramState::init(config::FullConfig::default(), std::path::PathBuf::new(), enums::Shell::default())
@@ -676,12 +674,18 @@ mod tests {
     #[test]
     fn test_argument_types() {
         let program_state = Rc::new(RefCell::new(default_program_state()));
+        let mut arg_parser = parser::ArgumentParser::new(program_state.clone());
         let mv_cmd = command::ConfigCommand {
             exe_name: "mv".to_string(),
             exe_to: "move".to_string(),
             execute_before: None,
             execute_after: None,
             args: vec![
+                command::SingleArg {
+                    arg_type: enums::ArgType::Executable,
+                    arg_hint: "exe".to_string(),
+                    arg_pos: 1,
+                },
                 command::SingleArg {
                     arg_type: enums::ArgType::Path,
                     arg_hint: "src".to_string(),
@@ -719,6 +723,8 @@ mod tests {
         let mut buffer = super::InputBuffer::init(program_state);
         buffer.insert_str_main_cursor("mv somewhere tohere");
         buffer.update();
+        arg_parser.reinit(buffer.first_arg());
+        buffer.update_arguments(&arg_parser);
 
         assert_eq!(buffer.argument_hints[0].0, enums::ArgType::Executable);
         assert_eq!(buffer.argument_hints[1].0, enums::ArgType::Path);
@@ -727,6 +733,8 @@ mod tests {
         buffer.clear_all();
         buffer.insert_str_main_cursor("mv -f somewhere -h aahhhhh tohere");
         buffer.update();
+        arg_parser.reinit(buffer.first_arg());
+        buffer.update_arguments(&arg_parser);
 
         assert_eq!(buffer.argument_hints[0].0, enums::ArgType::Executable);
         assert_eq!(buffer.argument_hints[1].0, enums::ArgType::Text);

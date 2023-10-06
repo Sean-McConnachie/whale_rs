@@ -5,26 +5,35 @@ use crate::{ansi, buffer, parser, state};
 fn reserved_commands(
     program_state: Rc<RefCell<state::ProgramState>>,
     buffer: &buffer::InputBuffer,
-) {
+) -> Option<super::ReservedFuncReturn> {
     let first_arg = buffer.first_arg().unwrap_or_default();
     for (cmd, func) in super::RESERVED_COMMANDS {
         if &first_arg == cmd {
-            func((program_state.clone(), buffer));
-            break;
+            return Some(func((program_state.clone(), buffer)));
         }
     }
+    None
 }
+
+pub type NewTerminalLine = u16;
 
 // TODO: Add support for execute_before and execute_after
 pub fn run_command(
     program_state: Rc<RefCell<state::ProgramState>>,
     buffer: &buffer::InputBuffer,
     arg_parser: &parser::ArgumentParser,
-) -> (Option<u16>, Option<super::StatusCode>) {
-    reserved_commands(
+) -> (Option<NewTerminalLine>, Option<super::StatusCode>) {
+    match reserved_commands(
         program_state.clone(),
         buffer,
-    );
+    ) {
+        None => (),
+        Some(action) => match action {
+            super::ReservedFuncReturn::Ok => (),
+            super::ReservedFuncReturn::Status(_) => (),
+            super::ReservedFuncReturn::DontExecute(_) => return (None, None),
+        }
+    };
 
     if buffer.len() == 0 { return (None, Some(-1)); }
 
