@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::rc::Rc;
 use crate::history::{BUFFER_SIZE, HistoryEntry};
+use crate::history::data_layer::{HistoryRequest, HistoryResponse};
 use crate::state;
 
 #[derive(Debug)]
@@ -55,23 +56,24 @@ impl History {
         s
     }
 
+    fn write_buf(&mut self, data: HistoryRequest) -> Result<usize, std::io::Error> {
+        self.data_conn.write(&bincode::serialize(&data).unwrap())
+    }
+
+    fn read_buf(&mut self) -> Result<HistoryResponse, std::io::Error> {
+        let bytes = self.data_conn.read(&mut self.buffer)?;
+        Ok(bincode::deserialize(&self.buffer[..bytes]).unwrap())
+    }
+
     fn update_oldest_ind(&mut self) {
         self.test_and_fix_connection();
 
-        { // send
-            let data = super::data_layer::HistoryRequest::GetNumHistoryEntries;
-            self.data_conn.write(&bincode::serialize(&data).unwrap()).unwrap();
-        }
-        { // receive
-            let bytes = self.data_conn.read(&mut self.buffer).unwrap();
-            let resp: super::data_layer::HistoryResponse =
-                bincode::deserialize(&self.buffer[..bytes]).unwrap();
-            match resp {
-                super::data_layer::HistoryResponse::HistoryInd(ind) => {
-                    self.history_iter = ind;
-                }
-                _ => unreachable!("Invalid response from history data layer"),
+        self.write_buf(HistoryRequest::GetNumHistoryEntries).unwrap();
+        match self.read_buf().unwrap() {
+            HistoryResponse::HistoryInd(ind) => {
+                self.history_iter = ind;
             }
+            _ => unreachable!("Invalid response from history data layer"),
         }
     }
 
@@ -82,18 +84,10 @@ impl History {
 
         self.test_and_fix_connection();
 
-        { // send
-            let data = super::data_layer::HistoryRequest::AddToHistory(cmd);
-            self.data_conn.write(&bincode::serialize(&data).unwrap())?;
-        }
-        { // receive
-            let bytes = self.data_conn.read(&mut self.buffer)?;
-            let resp: super::data_layer::HistoryResponse =
-                bincode::deserialize(&self.buffer[..bytes]).unwrap();
-            match resp {
-                super::data_layer::HistoryResponse::Ok => (),
-                _ => unreachable!("Invalid response from history data layer"),
-            }
+        self.write_buf(HistoryRequest::AddToHistory(cmd)).unwrap();
+        match self.read_buf().unwrap() {
+            HistoryResponse::Ok => (),
+            _ => unreachable!("Invalid response from history data layer"),
         }
 
         self.history_uncommitted = None;
@@ -111,20 +105,12 @@ impl History {
             }
             self.history_iter -= 1;
 
-            { // send
-                let data = super::data_layer::HistoryRequest::GetHistoryInd(self.history_iter);
-                self.data_conn.write(&bincode::serialize(&data).unwrap()).unwrap();
-            }
-            { // receive
-                let bytes = self.data_conn.read(&mut self.buffer).unwrap();
-                let resp: super::data_layer::HistoryResponse =
-                    bincode::deserialize(&self.buffer[..bytes]).unwrap();
-                match resp {
-                    super::data_layer::HistoryResponse::HistoryVal(history_entry) => {
-                        return history_entry;
-                    }
-                    _ => unreachable!("Invalid response from history data layer"),
+            self.write_buf(HistoryRequest::GetHistoryInd(self.history_iter)).unwrap();
+            match self.read_buf().unwrap() {
+                HistoryResponse::HistoryVal(history_entry) => {
+                    return history_entry;
                 }
+                _ => unreachable!("Invalid response from history data layer"),
             }
         }
         None
@@ -133,23 +119,14 @@ impl History {
     pub fn get_newer_history(&mut self) -> Option<HistoryEntry> {
         self.test_and_fix_connection();
 
-        { // send
-            self.history_iter += 1;
-            let data = super::data_layer::HistoryRequest::GetHistoryInd(self.history_iter);
-            self.data_conn.write(&bincode::serialize(&data).unwrap()).unwrap();
-        }
-        { // receive
-            let bytes = self.data_conn.read(&mut self.buffer).unwrap();
-            let resp: super::data_layer::HistoryResponse =
-                bincode::deserialize(&self.buffer[..bytes]).unwrap();
-            match resp {
-                super::data_layer::HistoryResponse::HistoryVal(history_entry) => {
-                    if history_entry.is_some() {
-                        return history_entry;
-                    }
+        self.write_buf(HistoryRequest::GetHistoryInd(self.history_iter)).unwrap();
+        match self.read_buf().unwrap() {
+            HistoryResponse::HistoryVal(history_entry) => {
+                if history_entry.is_some() {
+                    return history_entry;
                 }
-                _ => unreachable!("Invalid response from history data layer"),
             }
+            _ => unreachable!("Invalid response from history data layer"),
         }
         {
             // we have probably gone out of range. But this could be because the file has been
