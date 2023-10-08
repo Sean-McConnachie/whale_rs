@@ -3,7 +3,8 @@
 ### Todos
 
 - [x] Add command history
-- [ ] Add multi-process support for command history
+- [x] Add multi-process support for command history
+- [ ] Add proper error handling for multi-process communication
 - [ ] Add multiple command parsing (i.e. split by `&&`)
 - [ ] Add support for `execute_before` and `execute_after`
 - [ ] Improve hinting data handling (it's a bit of a mess right now)
