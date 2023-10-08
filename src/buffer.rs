@@ -1,8 +1,9 @@
 use std::cell::RefCell;
-use crate::{config::command, enums, hints, history, parser, state};
+use crate::{config::command, enums, hints, parser, state};
 use std::path;
 use std::rc::Rc;
 use crate::hints::Disregard;
+use crate::history::ux_layer;
 
 const BUFFER_LENGTH: usize = 8192;
 
@@ -58,14 +59,14 @@ pub struct InputBuffer {
     program_state: Rc<RefCell<state::ProgramState>>,
     argument_hints: Vec<(enums::ArgType, hints::Hint)>,
 
-    history: history::History,
+    history: ux_layer::History,
 
     curr_arg: usize,
 }
 
 impl InputBuffer {
     pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
-        let history = history::History::init(program_state.clone());
+        let history = ux_layer::History::init(program_state.clone());
         Self {
             buffer: ['\0'; BUFFER_LENGTH],
             input_length: 0,
@@ -531,6 +532,7 @@ impl InputBuffer {
             .history
             .get_older_history(&self.buffer[..self.input_length])
         {
+            let older = older.command();
             for (i, c) in older.chars().enumerate() {
                 self.buffer[i] = c;
             }
@@ -542,6 +544,7 @@ impl InputBuffer {
 
     pub fn history_newer(&mut self) {
         if let Some(newer) = self.history.get_newer_history() {
+            let newer = newer.command();
             for (i, c) in newer.chars().enumerate() {
                 self.buffer[i] = c;
             }
@@ -554,7 +557,7 @@ impl InputBuffer {
     pub fn history_push_current(&mut self) {
         if self.len() == 0 { return; }
         let cmd = self.get_buffer().iter().collect::<String>();
-        self.history.add_to_history(&cmd).unwrap();
+        self.history.add_to_history(cmd).unwrap();
     }
 }
 

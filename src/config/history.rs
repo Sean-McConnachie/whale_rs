@@ -9,6 +9,7 @@ pub struct ConfigHistory {
     #[serde(deserialize_with = "parse_path_buf")]
     pub history_fp: PathBuf,
     pub max_file_size_bytes: u64,
+    pub tcp_port: u16,
 }
 
 impl Default for ConfigHistory {
@@ -16,6 +17,7 @@ impl Default for ConfigHistory {
         Self {
             history_fp: PathBuf::from("whale.history"),
             max_file_size_bytes: 256 * 1024,
+            tcp_port: 5456,
         }
     }
 }
