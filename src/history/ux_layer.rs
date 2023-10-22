@@ -1,4 +1,3 @@
-use std::time;
 use std::cell::RefCell;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -17,18 +16,11 @@ pub struct History {
 }
 
 impl History {
-    pub fn test_and_fix_connection(&mut self) {
-        match self.data_conn.peer_addr() {
-            Ok(_) => {
-                return;
-            }
-            Err(_e) => {
-                super::data_layer::start_history_data_layer(self.program_state.clone())
-                    .unwrap();
-                let port = self.program_state.borrow().config.history.tcp_port;
-                self.data_conn = TcpStream::connect(format!("127.0.0.1:{}", port)).unwrap();
-            }
-        }
+    pub fn fix_connection(&mut self) {
+        super::data_layer::start_history_data_layer(self.program_state.clone())
+            .unwrap();
+        let port = self.program_state.borrow().config.history.tcp_port;
+        self.data_conn = TcpStream::connect(format!("127.0.0.1:{}", port)).unwrap();
     }
 
     pub fn init(program_state: Rc<RefCell<state::ProgramState>>) -> Self {
@@ -57,22 +49,29 @@ impl History {
     }
 
     fn write_buf(&mut self, data: HistoryRequest) -> Result<usize, std::io::Error> {
-        self.data_conn.write(&bincode::serialize(&data).unwrap())
+        let x = self.data_conn.write(&bincode::serialize(&data).unwrap());
+        if x.is_err() {
+            self.fix_connection();
+            self.write_buf(data)
+        } else {
+            x
+        }
     }
 
-    fn read_buf(&mut self) -> Result<HistoryResponse, std::io::Error> {
+    fn read_buf(&mut self) -> anyhow::Result<HistoryResponse> {
         let bytes = self.data_conn.read(&mut self.buffer)?;
-        Ok(bincode::deserialize(&self.buffer[..bytes]).unwrap())
+        bincode::deserialize(&self.buffer[..bytes]).map_err(|e| {
+            anyhow::anyhow!("Failed to deserialize history response: {}", e)
+        })
     }
 
     fn update_oldest_ind(&mut self) {
-        self.test_and_fix_connection();
-
         self.write_buf(HistoryRequest::GetNumHistoryEntries).unwrap();
-        match self.read_buf().unwrap() {
-            HistoryResponse::HistoryInd(ind) => {
+        match self.read_buf() {
+            Ok(HistoryResponse::HistoryInd(ind)) => {
                 self.history_iter = ind;
             }
+            Err(_) => self.update_oldest_ind(),
             _ => unreachable!("Invalid response from history data layer"),
         }
     }
@@ -82,11 +81,10 @@ impl History {
             return Ok(());
         }
 
-        self.test_and_fix_connection();
-
-        self.write_buf(HistoryRequest::AddToHistory(cmd)).unwrap();
-        match self.read_buf().unwrap() {
-            HistoryResponse::Ok => (),
+        self.write_buf(HistoryRequest::AddToHistory(cmd.clone())).unwrap();
+        match self.read_buf() {
+            Ok(HistoryResponse::Ok) => (),
+            Err(_) => return self.add_to_history(cmd),
             _ => unreachable!("Invalid response from history data layer"),
         }
 
@@ -97,19 +95,18 @@ impl History {
     }
 
     pub fn get_older_history(&mut self, cmd: &[char]) -> Option<HistoryEntry> {
-        self.test_and_fix_connection();
-
         if self.history_iter > 0 {
             if self.history_uncommitted.is_none() {
                 self.history_uncommitted = Some(HistoryEntry::new(0, cmd.iter().collect()));
             }
-            self.history_iter -= 1;
 
-            self.write_buf(HistoryRequest::GetHistoryInd(self.history_iter)).unwrap();
-            match self.read_buf().unwrap() {
-                HistoryResponse::HistoryVal(history_entry) => {
+            self.write_buf(HistoryRequest::GetHistoryInd(self.history_iter - 1)).unwrap();
+            match self.read_buf() {
+                Ok(HistoryResponse::HistoryVal(history_entry)) => {
+                    self.history_iter -= 1;
                     return history_entry;
                 }
+                Err(_) => return self.get_older_history(cmd),
                 _ => unreachable!("Invalid response from history data layer"),
             }
         }
@@ -117,15 +114,15 @@ impl History {
     }
 
     pub fn get_newer_history(&mut self) -> Option<HistoryEntry> {
-        self.test_and_fix_connection();
-
-        self.write_buf(HistoryRequest::GetHistoryInd(self.history_iter)).unwrap();
-        match self.read_buf().unwrap() {
-            HistoryResponse::HistoryVal(history_entry) => {
+        self.write_buf(HistoryRequest::GetHistoryInd(self.history_iter + 1)).unwrap();
+        match self.read_buf() {
+            Ok(HistoryResponse::HistoryVal(history_entry)) => {
+                self.history_iter += 1;
                 if history_entry.is_some() {
                     return history_entry;
                 }
             }
+            Err(_) => return self.get_newer_history(),
             _ => unreachable!("Invalid response from history data layer"),
         }
         {

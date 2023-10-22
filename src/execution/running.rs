@@ -31,7 +31,7 @@ pub fn run_command(
         Some(action) => match action {
             super::ReservedFuncReturn::Ok => (),
             super::ReservedFuncReturn::Status(_) => (),
-            super::ReservedFuncReturn::DontExecute(_) => return (None, None),
+            super::ReservedFuncReturn::DontExecute(_) => return (None, None)
         }
     };
 

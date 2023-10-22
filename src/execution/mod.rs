@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::path;
+use std::process::exit;
 use std::rc::Rc;
 use crate::{buffer, enums, state};
 
@@ -21,6 +22,7 @@ pub enum ReservedFuncReturn {
 }
 
 const RESERVED_COMMANDS: &[(&str, fn(ReservedFuncParams) -> ReservedFuncReturn)] = &[
+    ("exit", exit_cmd),
     ("cd", cd_cmd),
     ("use", use_cmd)
 ];
@@ -44,6 +46,10 @@ fn remove_quotes(mut s: &str) -> &str {
         s = &s[..s.len() - 1]
     }
     s
+}
+
+fn exit_cmd(params: ReservedFuncParams) -> ReservedFuncReturn {
+    exit(0);
 }
 
 fn cd_cmd(params: ReservedFuncParams) -> ReservedFuncReturn {
