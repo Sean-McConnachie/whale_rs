@@ -56,12 +56,25 @@ fn cd_cmd(params: ReservedFuncParams) -> ReservedFuncReturn {
     let (program_state, buf) = params;
     // TODO: Subsequent `cd`s?
     if let Some(dir) = get_nth(2, buf) {
+        let mut p_state = program_state.borrow_mut();
+        if dir == ".." {
+            let mut cwd = p_state.current_working_directory.clone();
+            cwd.pop();
+            p_state.current_working_directory = cwd;
+            return ReservedFuncReturn::DontExecute(0);
+        }
         let clean = remove_quotes(&dir);
         let dir = path::PathBuf::from(clean);
         if dir.exists() {
-            program_state.borrow_mut().current_working_directory = dir;
+            p_state.current_working_directory = dir;
         } else {
-            todo!("Display error")
+            let dir = p_state.current_working_directory.join(dir);
+            if dir.exists() {
+                p_state.current_working_directory = dir;
+            } else {
+                eprintln!("Directory does not exist");
+                return ReservedFuncReturn::DontExecute(1);
+            }
         }
     }
     ReservedFuncReturn::DontExecute(0)

@@ -14,3 +14,4 @@
 - [ ] Add config for keyboard shortcuts
 - [x] Add `cd` command
 - [x] Add `use` command for selecting shell
+- [x] Fix file explorer wrap around crashes

@@ -38,6 +38,14 @@ impl DirInfo {
         }
     }
 
+    fn empty() -> Self {
+        Self {
+            scroll: 0,
+            dir: path::PathBuf::new(),
+            entries: Vec::new(),
+        }
+    }
+
     fn new_to_parent(self) -> Self {
         let original = self.dir.clone();
         let parent = self.dir.parent().unwrap().to_path_buf();
@@ -87,7 +95,7 @@ impl DirInfo {
         for i in 0..upper {
             ansi::move_to((start.0, start.1 + i as u16));
 
-            let ind = (i + self.scroll + mid) % self.entries.len();
+            let ind = ((i as i64 + self.scroll as i64 - mid as i64).rem_euclid(self.entries.len() as i64)) as usize;
             let entry = &self.entries[ind];
             let name = entry.file_name().unwrap().to_str().unwrap();
 
@@ -280,11 +288,19 @@ impl super::GUITrait for FileExplorerGUI {
                 action_to_take = ActionToTake::BlockBuffer
             }
             InputEvent::ArrowLeft => {
-                let tmp = self.col_mid.clone();
-                self.col_mid = self.col_lef.clone();
-                self.col_rig = FinalCol::Dir(tmp);
-                self.col_lef = self.col_lef.clone().new_to_parent();
-                action_to_take = ActionToTake::BlockBuffer
+                if self.col_mid.dir.parent().is_some() {
+                    if self.col_lef.dir.parent().is_none() {
+                        // This is root
+                        self.col_mid = self.col_lef.clone();
+                        self.col_lef = DirInfo::empty();
+                    } else {
+                        let tmp = self.col_mid.clone();
+                        self.col_mid = self.col_lef.clone();
+                        self.col_rig = FinalCol::Dir(tmp);
+                        self.col_lef = self.col_lef.clone().new_to_parent();
+                    }
+                    action_to_take = ActionToTake::BlockBuffer
+                }
             }
             InputEvent::ArrowRight => {
                 match &self.col_rig {

@@ -114,7 +114,7 @@ fn update_buffer(
         }
         InputEvent::Resize(size) => *term_size = size,
 
-        InputEvent::CtrlS => {
+        InputEvent::CtrlD => {
             let view = terminal_gui.view_type();
             toggle_view_action(&mut rtn, view, ViewType::Explorer)
         }
