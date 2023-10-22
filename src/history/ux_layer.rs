@@ -89,7 +89,7 @@ impl History {
         }
 
         self.history_uncommitted = None;
-        self.history_iter = 0;
+        self.update_oldest_ind();
 
         Ok(())
     }

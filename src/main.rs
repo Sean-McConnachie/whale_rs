@@ -199,13 +199,16 @@ fn runtime_loop(
 ) {
     ansi::erase_screen();
 
-    let mut term_size = (1, 1);
+    let mut term_size = (60, 5);
 
-    let mut iter: u128 = 0;
+    let mut iter: u64 = 0;
     let mut positions;
     let mut write_from_line;
-    let mut input;
+    let mut input = InputEvent::Dummy;
     let mut action_to_take;
+
+    positions = terminal_gui.calculate_increased_length(&buffer, term_size);
+    terminal_gui.write_output(&buffer, input, term_size, positions.0);
 
     loop {
         if iter == 1 {
