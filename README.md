@@ -6,7 +6,7 @@
 - [x] Add multi-process support for command history
 - [x] Add error handling for multi-process communication
 - [ ] Add multiple command parsing (i.e. split by `&&`)
-- [ ] Add support for `execute_before` and `execute_after`
+- [x] Add support for `execute_before` and `execute_after`
 - [ ] Improve hinting data handling (it's a bit of a mess right now)
 - [ ] Improve common commands for buffer (i.e. prevent == 0 checks everywhere)
 - [ ] Add binary search for finding first item
