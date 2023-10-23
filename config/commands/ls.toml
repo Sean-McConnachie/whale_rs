@@ -1,0 +1,14 @@
+exe_to = "dir"
+flag = []
+flag_arg_pair = []
+# single_arg = []
+
+[[single_arg]]
+arg_type = "Path"
+arg_hint = "src"
+arg_pos = 1
+# 
+# [[single_arg]]
+# arg_type = "Path"
+# arg_hint = "dst"
+# arg_pos = 2

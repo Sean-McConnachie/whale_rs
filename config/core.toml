@@ -1,2 +1,2 @@
-default_shell = "Bash"
+default_shell = "CommandPrompt"
 data_dir = "data"

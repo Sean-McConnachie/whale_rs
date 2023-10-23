@@ -100,6 +100,9 @@ pub fn run_command(
             iter.reinit(args.clone());
             let mut i = 0;
             let mut shell_str = String::with_capacity(buffer.len());
+            shell_str += &arg_parser.cmd().exe_to;
+            shell_str += " ";
+            let _ = iter.next();
             for arg in iter {
                 match arg {
                     parser::Argument::Other => { shell_str += &args[i]; }
@@ -114,7 +117,7 @@ pub fn run_command(
                         let flag = unsafe { &*flag };
                         shell_str += &flag.flag_to;
                     }
-                    parser::Argument::Arg(_arg) => { shell_str += &args[i]; }
+                    parser::Argument::Arg(arg) => { shell_str += &args[i]; }
                 }
                 shell_str += " ";
                 i += 1;

@@ -1,14 +1,13 @@
 exe_to = "move"
 flag = []
 flag_arg_pair = []
-#execute_before = "echo test " $2, $2.., $..2, $2..3, $..
 
 [[single_arg]]
 arg_type = "Path"
-arg_hint = "source"
+arg_hint = "src"
 arg_pos = 1
 
 [[single_arg]]
 arg_type = "Path"
-arg_hint = "destination"
+arg_hint = "dst"
 arg_pos = 2
