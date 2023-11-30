@@ -1,14 +1,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use whale_rs::input::{InputEvent};
 use whale_rs::buffer::Side;
-use whale_rs::{ansi, buffer, config, execution, gui, input, parser, state};
 use whale_rs::gui::{explorer, GUITrait, ViewType};
+use whale_rs::input::InputEvent;
+use whale_rs::{ansi, buffer, config, execution, gui, input, parser, state};
 
 fn toggle_view_action(
     view_action: &mut AdditionalViewAction,
     active_view: Option<ViewType>,
-    target: ViewType) {
+    target: ViewType,
+) {
     if let Some(active) = active_view {
         if active == target {
             *view_action = AdditionalViewAction::Unset;
@@ -40,11 +41,8 @@ fn update_buffer(
         InputEvent::Backspace => buffer.del_n(Side::Left, 1),
         InputEvent::Delete => buffer.del_n(Side::Right, 1),
         InputEvent::Enter => {
-            let (new_line, _status) = execution::running::run_command(
-                program_state.clone(),
-                buffer,
-                arg_parser,
-            );
+            let (new_line, _status) =
+                execution::running::run_command(program_state.clone(), buffer, arg_parser);
             if let Some(line) = new_line {
                 terminal_gui.set_current_line(line);
             }
@@ -55,7 +53,9 @@ fn update_buffer(
             let hints = buffer.get_argument_hints();
             let curr = buffer.arg_locs(buffer.get_curr_arg());
             let hint = &hints[buffer.get_curr_arg()].1;
-            let hint_arg = hint.last_closest_match().unwrap()[(curr.1 - curr.0 - hint.disregard())..].to_string();
+            let hint_arg = hint.last_closest_match().unwrap()
+                [(curr.1 - curr.0 - hint.disregard())..]
+                .to_string();
             buffer.insert_str_main_cursor(&hint_arg);
         }
         InputEvent::Character(c) => {
@@ -129,8 +129,7 @@ fn update_buffer(
             toggle_view_action(&mut rtn, view, ViewType::Table)
         }
 
-        _ => ()
-        // TODO: History
+        _ => (), // TODO: History
     }
 
     buffer.update();
@@ -142,7 +141,8 @@ fn update_buffer(
 fn execute_action(
     action: gui::ActionToExecute,
     buffer: &mut buffer::InputBuffer,
-    arg_parser: &mut parser::ArgumentParser) {
+    arg_parser: &mut parser::ArgumentParser,
+) {
     match action {
         gui::ActionToExecute::SetClosestMatch(s) => {
             let curr_arg = buffer.get_curr_arg();
@@ -217,7 +217,7 @@ fn runtime_loop(
 
         input = match input::get_input() {
             Ok(inp) => inp,
-            Err(_) => continue
+            Err(_) => continue,
         };
 
         if input == InputEvent::CtrlC {
@@ -226,7 +226,7 @@ fn runtime_loop(
         }
 
         positions = terminal_gui.calculate_increased_length(&buffer, term_size);
-        write_from_line = positions.1.1 + 1;
+        write_from_line = positions.1 .1 + 1;
 
         action_to_take = terminal_gui.action_before_write(
             &buffer,
